@@ -1,24 +1,9 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Microsoft.Extensions.Logging;
+using StockTvKiosk.Core.Configuration;
 
 namespace StockTvKiosk.App.Logging;
-
-public sealed class FileLoggerOptions
-{
-    public bool Enabled { get; set; }
-
-    /// <summary>Relativ zum Anwendungsverzeichnis oder absolut.</summary>
-    public string Directory { get; set; } = "_logs";
-
-    public string FileName { get; set; } = "kiosk.log";
-
-    /// <summary>Ab dieser Groesse wird rotiert. 0 = nie rotieren.</summary>
-    public long MaxFileSizeBytes { get; set; } = 5 * 1024 * 1024;
-
-    /// <summary>Anzahl der aufbewahrten Altdateien (kiosk.1.log, kiosk.2.log, ...).</summary>
-    public int RetainedFileCount { get; set; } = 3;
-}
 
 /// <summary>
 /// Schlanker Datei-Logger: der Kiosk laeuft unbeaufsichtigt, deshalb muessen erkannte
@@ -27,14 +12,14 @@ public sealed class FileLoggerOptions
 /// </summary>
 public sealed class FileLoggerProvider : ILoggerProvider
 {
-    private readonly FileLoggerOptions _options;
+    private readonly LoggingFileOptions _options;
     private readonly string _path;
     private readonly BlockingCollection<string> _queue = new(4096);
     private readonly Thread _worker;
     private readonly ConcurrentDictionary<string, FileLogger> _loggers = new();
     private volatile bool _disposed;
 
-    public FileLoggerProvider(FileLoggerOptions options, string baseDirectory)
+    public FileLoggerProvider(LoggingFileOptions options, string baseDirectory)
     {
         _options = options;
 

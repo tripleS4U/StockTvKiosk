@@ -18,7 +18,7 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 - **.NET 10** (aktuelle Version verwenden — `dotnet --version` prüfen und `global.json` entsprechend anlegen)
 - **Avalonia UI 12.1.1** als Cross-Platform-UI-Framework (Windows + Linux; v12 bringt native Wayland-Unterstützung)
 - **`Avalonia.Controls.WebView` 12.1.0** — entschieden am 26.08.2026. Seit Avalonia 12 ist der WebView offiziell, quelloffen (MIT) und kostenlos; er nutzt die native Engine der Plattform (WebView2 / WPE bzw. WebKitGTK) statt gebündeltem Chromium. Damit sind die früher nötigen Drittanbieter-Pakete (`Avalonia.WebView`, `WebViewControl-Avalonia`/CefGlue) hinfällig.
-- Konfiguration über `appsettings.json` (Primär-URL, Sekundär-URL, Fallback-Verhalten) sowie optionale Kommandozeilen-Overrides
+- Konfiguration ausschließlich über `AppConfig` (Datei `_config/AppConfig.json` neben der Anwendung). Bewusst keine zweite Quelle: kein `appsettings.json`, keine Umgebungsvariablen, keine Kommandozeilen-Overrides für Einstellungswerte. Einziger CLI-Schalter ist `--dry-run`.
 
 ## Architektur / Vorgehen
 
@@ -38,8 +38,8 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
    - Jedes Fenster enthält eine WebView-Komponente, die die zugehörige URL lädt.
 
 4. **Konfiguration**
-   - `appsettings.json`: `PrimaryUrl`, `SecondaryUrl`, Fallback-Verhalten.
-   - Kommandozeilenargumente können die URLs überschreiben.
+   - `AppConfig`: `KioskOptions > Urls > PrimaryUrl` / `SecondaryUrl`, Fallback-Verhalten.
+   - Kommandozeile: nur `--dry-run` (gilt für einen Programmlauf, gehört deshalb nicht in die Datei).
 
 5. **Plattform-Besonderheiten**
    - **Linux:** X11 vs. Wayland beachten — auf Wayland ist programmatische Fensterpositionierung eingeschränkt (Compositor-Beschränkung). Falls nötig, Fallback-Strategie dokumentieren.
@@ -66,20 +66,20 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 
 - **URLs:** Die Blazor-App ist StockTV (`StockTvBlazor.exe`) auf `http://localhost:5129`.
   Primär `/turnier` (Bedienfenster, Numpad-Eingabe), sekundär `/display2` (Spiegel).
-  Beides in `appsettings.json` und per `--primary-url` / `--secondary-url` überschreibbar.
+  Beides in `_config/AppConfig.json` unter `KioskOptions > Urls`.
 - **Verbindungsabbruch:** Lokale, eingebettete Statusseite + Auto-Retry alle 5 s, automatischer
-  Reload, sobald der Server antwortet. Konfigurierbar unter `Kiosk:Retry`.
+  Reload, sobald der Server antwortet. Konfigurierbar unter `KioskOptions > Retry`.
 - **Wayland:** X11 ist die primäre Linux-Zielplattform. Wayland läuft, aber die
   Fensterpositionierung liegt dort beim Compositor — der Kiosk erkennt das und warnt im Log.
   Auf Raspberry Pi OS Bookworm per `raspi-config` auf X11 stellen.
-- **Prozess-Management:** Konfigurierbar (`Kiosk:BlazorHost:Enabled`). Aus = StockTV wird
+- **Prozess-Management:** Konfigurierbar (`KioskOptions > BlazorHost > Enabled`). Aus = StockTV wird
   extern gestartet; ein = der Kiosk startet und beendet StockTV selbst und räumt eine
   laufende Vorinstanz wegen der NetMQ-Ports 4747/4748 ab.
 
 - **Autostart:** Umgesetzt für beide Plattformen unter `deploy/` — systemd-User-Units für Linux,
   Aufgabenplanung für Windows. Jeweils zwei getrennte Einheiten (StockTV und Anzeige), damit sich
   die Anzeige neu starten lässt, ohne die laufende Wertung anzufassen. Deshalb bleibt
-  `Kiosk:BlazorHost:Enabled` im Autostart-Betrieb auf `false`.
+  `KioskOptions > BlazorHost > Enabled` im Autostart-Betrieb auf `false`.
 - **`AllowExitShortcut`:** Bleibt auf `true`. Mit Autostart holt systemd den Kiosk nach 5 s
   zurück, der Windows-Task binnen einer Minute — Shift+Esc ist damit ein „Anzeige neu laden"
   statt eines Ausfalls. Auf `false` nur, wenn der Kiosk StockTV selbst verwaltet oder kein

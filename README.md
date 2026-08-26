@@ -56,48 +56,54 @@ Erzeugt self-contained Builds unter `publish/` fuer `win-x64`, `linux-x64` und
 
 ## Konfiguration
 
-Alles in `appsettings.json`, Abschnitt `Kiosk`. Jeder Wert laesst sich auf der
-Kommandozeile ueberschreiben — per Kurzform oder ueber den vollen Pfad
-(`--Kiosk:Retry:IntervalSeconds=10`).
+**Einzige Quelle ist `AppConfig`** — die Datei `_config/AppConfig.json` neben der
+Anwendung. Sie wird beim ersten Start mit Standardwerten angelegt; der tatsaechlich
+verwendete Pfad steht in der ersten Logzeile:
 
-| Kurzform | Bedeutung |
+```
+info: StockTvKiosk[0] Konfiguration: …\_config\AppConfig.json
+```
+
+Es gibt bewusst **keine zweite Konfigurationsquelle**: kein `appsettings.json`, keine
+`STOCKTV_`-Umgebungsvariablen, keine Kommandozeilen-Overrides fuer Einstellungswerte. Zwei
+Quellen, die still gegeneinander arbeiten, sind im unbeaufsichtigten Kiosk-Betrieb
+schwerer zu diagnostizieren als eine Datei, die man aufmacht und liest.
+
+Der einzige verbliebene Schalter ist:
+
+| Schalter | Bedeutung |
 |---|---|
-| `--primary-url` | Adresse des Bedienfensters |
-| `--secondary-url` | Adresse der Spiegel-Anzeige |
-| `--demo true` | haengt `demo=true` an beide URLs |
-| `--dual false` | nur ein Fenster |
-| `--second-screen false` | beide Fenster nebeneinander auf einem Bildschirm |
-| `--main-display 1` | Bildschirmindex fuers Bedienfenster |
-| `--mirror-display 0` | Bildschirmindex fuer den Spiegel |
-| `--window-mode FullScreen` | zusaetzlich `WindowState=FullScreen` setzen |
-| `--dry-run true` | nur erkennen und protokollieren, kein Fenster oeffnen |
-| `--manage-host true` | StockTvBlazor selbst starten und mit beenden |
-| `--host-exe <Pfad>` | Pfad zur `StockTvBlazor.exe` |
+| `--dry-run` | Bildschirme erkennen, Fensterplan protokollieren, beenden — kein Fenster |
 
-Zusaetzlich werden Umgebungsvariablen mit dem Praefix `STOCKTV_` gelesen
-(`STOCKTV_Kiosk__Urls__PrimaryUrl=...`), und `appsettings.Local.json` ueberschreibt
-`appsettings.json`, ohne dass die eingecheckte Datei angefasst werden muss.
+Er steht absichtlich nicht in der Datei: er gilt fuer genau einen Programmlauf, und ein
+dort vergessenes `true` haette zur Folge, dass der Kiosk gar nichts mehr anzeigt.
+`--dry-run`, `--dry-run true` und `--dry-run=true` sind gleichwertig; `--dry-run false`
+schaltet ausdruecklich ab.
+
+> Enum-Werte stehen in der Datei als Zahl (`"WindowMode": 0`). Reihenfolge bei
+> `WindowMode`: `0` = `Borderless`, `1` = `FullScreen`; bei `SingleScreenFallback`:
+> `0` = `SideBySide`, `1` = `PrimaryOnly`.
 
 ### Wichtige Einstellungen
 
-`Kiosk:Display:MainDisplayIndex` / `MirrorDisplayIndex`
+`KioskOptions > Display > MainDisplayIndex` / `MirrorDisplayIndex`
 : `-1` = automatisch (Bedienfenster auf den System-Primaerbildschirm, Spiegel auf den
   ersten anderen). Ein expliziter Index ueberstimmt das — noetig, wenn der Kunde den
   Windows-Primaerbildschirm anders gesetzt hat, als der Kiosk ihn braucht.
 
-`Kiosk:Display:SingleScreenFallback`
+`KioskOptions > Display > SingleScreenFallback`
 : Verhalten mit nur einem nutzbaren Bildschirm. `SideBySide` legt beide Fenster
   nebeneinander (wie `start-compiled.ps1`), `PrimaryOnly` oeffnet nur das Bedienfenster.
 
-`Kiosk:Display:TreatDuplicatedAsSingleScreen`
+`KioskOptions > Display > TreatDuplicatedAsSingleScreen`
 : Bei Anzeigemodus *Duplizieren* zeigen beide Ausgaenge dasselbe Bild — ein Vollbild-Spiegel
   wuerde das Bedienfenster verdecken. Standard `true` behandelt den Fall wie einen Bildschirm.
 
-`Kiosk:Display:AllowExitShortcut`
+`KioskOptions > Display > AllowExitShortcut`
 : Laesst **Shift+Esc** den Kiosk beenden. Standard `true` — siehe
   [Wann Shift+Esc abschalten?](#wann-shiftesc-abschalten).
 
-`Kiosk:BlazorHost:Enabled`
+`KioskOptions > BlazorHost > Enabled`
 : `false` (Standard): StockTV wird extern gestartet, der Kiosk wartet nur auf die URL.
   `true`: der Kiosk startet `StockTvBlazor` selbst, beendet eine bereits laufende Instanz
   (NetMQ belegt 4747/4748 exklusiv) und faehrt sie beim Schliessen mit herunter.
@@ -122,7 +128,7 @@ seine echte Fehlermeldung hilft bei der Diagnose mehr als unsere Statusseite.
 
 Auf beiden Plattformen gilt dasselbe Muster: **zwei getrennte Einheiten**, eine fuer
 StockTV und eine fuer die Anzeige. Damit laesst sich der Kiosk neu starten, ohne die
-laufende Turnierwertung anzufassen — deshalb bleibt `Kiosk:BlazorHost:Enabled` beim
+laufende Turnierwertung anzufassen — deshalb bleibt `KioskOptions > BlazorHost > Enabled` beim
 Autostart-Betrieb auf `false`.
 
 ### Linux (systemd)
@@ -140,7 +146,7 @@ Auf einem Pi mit Autologin ist das genau das richtige Modell.
 * `stocktv-kiosk.service` — `WantedBy=graphical-session.target`, `Wants=stocktv.service`,
   wartet per `ExecStartPre` bis zu 60 s auf den X11-Socket
 
-`--dry-run` zeigt die fertigen Units, ohne etwas zu installieren. Soll StockTV schon vor
+`install-linux.sh --dry-run` zeigt die fertigen Units, ohne etwas zu installieren. Soll StockTV schon vor
 der Anmeldung laufen: `sudo loginctl enable-linger <user>`.
 
 ```bash
@@ -186,7 +192,7 @@ Windows-Task binnen einer Minute. Shift+Esc wird damit vom Ausfallrisiko zur nue
 Vor-Ort-Geste „Anzeige neu laden" — praktisch, wenn eine Blazor-Seite haengt und niemand
 SSH-Zugang hat.
 
-Ein echtes Risiko bleibt in genau einem Fall: bei `Kiosk:BlazorHost:Enabled = true` nimmt
+Ein echtes Risiko bleibt in genau einem Fall: bei `KioskOptions > BlazorHost > Enabled = true` nimmt
 der Kiosk StockTV beim Beenden mit. Shift+Esc startet dann mitten im Turnier die Wertung
 neu — NetMQ-Verbindungen brechen, Zustand im Arbeitsspeicher geht verloren. Genau deshalb
 trennt der Autostart oben beides in zwei Einheiten.
@@ -239,7 +245,7 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 1 | Windows | 2 Monitore, erweitert | 2 Fenster, je 1 pro Bildschirm, Fokus im Bedienfenster | ✅ verifiziert |
 | 2 | Windows | 1 Monitor | 2 Fenster nebeneinander, Warnung "Kein zweiter Bildschirm" | ⬜ offen |
 | 3 | Windows | 2 Monitore, dupliziert | 1 Bildschirm belegt, Warnung "Duplizieren" | ⬜ offen |
-| 4 | Windows | `--dual false` | genau 1 Vollbildfenster | ✅ verifiziert |
+| 4 | Windows | `Display > Dual = false` | genau 1 Vollbildfenster | ✅ verifiziert |
 | 5 | Windows | Server aus, dann an | Statusseite → Auto-Reload ohne Eingriff | ✅ verifiziert |
 | 6 | Windows | Monitore unterschiedlich skaliert | beide Fenster fuellen ihren Bildschirm exakt | ⬜ offen |
 | 7 | Linux/X11 | 2 Monitore | wie #1 | ⬜ offen |

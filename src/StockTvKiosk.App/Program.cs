@@ -1,44 +1,32 @@
 using System.Runtime.InteropServices;
 using Avalonia;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using StockTvKiosk.App.Logging;
 using StockTvKiosk.Core.Configuration;
-using static StockTvKiosk.App.AppConfig;
 
 namespace StockTvKiosk.App;
 
 internal static class Program
 {
     /// <summary>
-    /// Kommandozeilen-Kurzformen. Jeder Wert aus appsettings.json laesst sich zusaetzlich
-    /// direkt ueber seinen Pfad ueberschreiben, z. B. --Kiosk:Retry:IntervalSeconds=10.
+    /// Die gesamte Konfiguration kommt aus <see cref="AppConfig"/> (Datei
+    /// <c>_config/AppConfig.json</c> neben der Anwendung). Es gibt bewusst keine zweite
+    /// Quelle mehr: appsettings.json, Umgebungsvariablen und Kommandozeilen-Overrides
+    /// wuerden sonst still gegeneinander arbeiten.
     /// </summary>
-    private static readonly Dictionary<string, string> SwitchMappings = new()
-    {
-        ["--primary-url"] = "Kiosk:Urls:PrimaryUrl",
-        ["--secondary-url"] = "Kiosk:Urls:SecondaryUrl",
-        ["--demo"] = "Kiosk:Urls:Demo",
-        ["--dual"] = "Kiosk:Display:Dual",
-        ["--second-screen"] = "Kiosk:Display:UseSecondScreen",
-        ["--main-display"] = "Kiosk:Display:MainDisplayIndex",
-        ["--mirror-display"] = "Kiosk:Display:MirrorDisplayIndex",
-        ["--window-mode"] = "Kiosk:Display:WindowMode",
-        ["--dry-run"] = "Kiosk:DryRun",
-        ["--manage-host"] = "Kiosk:BlazorHost:Enabled",
-        ["--host-exe"] = "Kiosk:BlazorHost:ExecutablePath"
-    };
-
-    public static IConfiguration Configuration { get; private set; } = null!;
-    public static ILoggerFactory LoggerFactory { get; private set; } = null!;
     public static KioskOptions Options { get; private set; } = null!;
 
+    public static ILoggerFactory LoggerFactory { get; private set; } = null!;
+
     /// <summary>
-    /// Nur erkennen und protokollieren, kein Fenster oeffnen (--dry-run). Bewusst NICHT Teil
-    /// von <see cref="KioskOptions"/>: der Schalter gilt fuer genau einen Programmlauf und
-    /// haette in der persistierten Einstellungsdatei nichts verloren.
+    /// Nur erkennen und protokollieren, kein Fenster oeffnen (<c>--dry-run</c>).
+    /// Der einzige Schalter, den es noch auf der Kommandozeile gibt - und bewusst NICHT in
+    /// AppConfig: er gilt fuer genau einen Programmlauf. In der Datei abgelegt wuerde ein
+    /// vergessenes true dazu fuehren, dass der Kiosk gar nichts mehr anzeigt.
     /// </summary>
     public static bool DryRun { get; private set; }
+
+    private const string DryRunSwitch = "--dry-run";
 
     [STAThread]
     public static int Main(string[] args)
@@ -47,14 +35,14 @@ internal static class Program
         // Beim Doppelklick passiert nichts - es oeffnet sich also kein stoerendes Fenster.
         AttachParentConsole();
 
-        Configuration = BuildConfiguration(args);
         Options = AppConfig.Instance.KioskOptions;
-        DryRun = Configuration.GetValue<bool>("Kiosk:DryRun");
-        LoggerFactory = BuildLoggerFactory(Configuration);
+        DryRun = ReadSwitch(args, DryRunSwitch);
+        LoggerFactory = BuildLoggerFactory(AppConfig.Instance.Logging);
 
         var logger = LoggerFactory.CreateLogger("StockTvKiosk");
         logger.LogInformation("StockTV-Kiosk startet auf {Os} ({Arch}).",
             RuntimeInformation.OSDescription, RuntimeInformation.OSArchitecture);
+        logger.LogInformation("Konfiguration: {Path}", AppConfig.GetConfigFullName());
 
         try
         {
@@ -78,33 +66,64 @@ internal static class Program
                      .UsePlatformDetect()
                      .LogToTrace();
 
-    private static IConfiguration BuildConfiguration(string[] args)
+    /// <summary>
+    /// Liest einen booleschen Schalter aus den Argumenten. Akzeptiert <c>--x</c>,
+    /// <c>--x true</c> und <c>--x=true</c>; ein ausdrueckliches <c>--x false</c> gewinnt.
+    /// </summary>
+    private static bool ReadSwitch(string[] args, string name)
     {
-        string baseDirectory = AppContext.BaseDirectory;
+        for (int i = 0; i < args.Length; i++)
+        {
+            string argument = args[i];
 
-        return new ConfigurationBuilder()
-            .SetBasePath(baseDirectory)
-            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: false)
-            .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false)
-            .AddEnvironmentVariables("STOCKTV_")
-            .AddCommandLine(args, SwitchMappings)
-            .Build();
+            if (argument.StartsWith(name + "=", StringComparison.OrdinalIgnoreCase))
+                return !bool.TryParse(argument[(name.Length + 1)..], out bool inline) || inline;
+
+            if (!argument.Equals(name, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            if (i + 1 < args.Length && bool.TryParse(args[i + 1], out bool following))
+                return following;
+
+            return true;
+        }
+
+        return false;
     }
 
-    private static ILoggerFactory BuildLoggerFactory(IConfiguration configuration)
+    private static ILoggerFactory BuildLoggerFactory(LoggingOptions logging)
         => Microsoft.Extensions.Logging.LoggerFactory.Create(builder =>
         {
-            builder.AddConfiguration(configuration.GetSection("Logging"));
+            ApplyLogLevels(builder, logging.LogLevel);
+
             builder.AddSimpleConsole(o =>
             {
                 o.SingleLine = true;
                 o.TimestampFormat = "HH:mm:ss ";
             });
 
-            var fileOptions = configuration.GetSection("Logging:File").Get<FileLoggerOptions>();
-            if (fileOptions is { Enabled: true })
-                builder.AddProvider(new FileLoggerProvider(fileOptions, AppContext.BaseDirectory));
+            if (logging.File.Enabled)
+                builder.AddProvider(new FileLoggerProvider(logging.File, AppContext.BaseDirectory));
         });
+
+    /// <summary>
+    /// Uebertraegt den LogLevel-Abschnitt aus AppConfig auf den Logger. Entspricht dem, was
+    /// frueher AddConfiguration aus appsettings.json gelesen hat: "Default" setzt die
+    /// Mindeststufe, jeder andere Eintrag ist ein Filter auf das Kategoriepraefix.
+    /// </summary>
+    private static void ApplyLogLevels(ILoggingBuilder builder, Dictionary<string, string> levels)
+    {
+        foreach (var (category, name) in levels)
+        {
+            if (!Enum.TryParse(name, ignoreCase: true, out LogLevel level))
+                continue;
+
+            if (category.Equals("Default", StringComparison.OrdinalIgnoreCase))
+                builder.SetMinimumLevel(level);
+            else
+                builder.AddFilter(category, level);
+        }
+    }
 
     private const int AttachParentProcess = -1;
     private const int StdOutputHandle = -11;
