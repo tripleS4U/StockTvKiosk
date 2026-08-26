@@ -49,7 +49,7 @@ public partial class App : Application
         {
             _blazorHost = new BlazorHostProcess(
                 options.BlazorHost, Program.LoggerFactory.CreateLogger<BlazorHostProcess>());
-            _blazorHost.StartIfEnabled();
+            _blazorHost.StartIfEnabled(ReadinessProbe(options.Urls.PrimaryUrl));
         }
 
         // Avalonia liefert die Bildschirmliste nur ueber ein TopLevel. Das erste Fenster wird
@@ -108,6 +108,20 @@ public partial class App : Application
         desktop.Exit += OnExit;
 
         _windows[^1].FocusWebContent();
+    }
+
+    /// <summary>
+    /// Wurzeladresse der Blazor-Anwendung, gegen die auf Bereitschaft geprueft wird - also nur
+    /// Schema, Host und Port der Primaer-URL. Der Seitenpfad taugt dafuer nicht: /turnier koennte
+    /// 404 liefern, obwohl der Server laeuft.
+    /// </summary>
+    private Uri? ReadinessProbe(string primaryUrl)
+    {
+        if (Uri.TryCreate(primaryUrl, UriKind.Absolute, out var uri))
+            return new Uri(uri.GetLeftPart(UriPartial.Authority));
+
+        _logger.LogWarning("PrimaryUrl ist keine gueltige Adresse: {Url}", primaryUrl);
+        return null;
     }
 
     private void LogEnvironment(IReadOnlyList<ScreenInfo> screens, DisplayModeInfo displayMode)

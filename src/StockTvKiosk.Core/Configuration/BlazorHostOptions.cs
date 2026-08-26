@@ -30,7 +30,10 @@ namespace StockTvKiosk.Core.Configuration
 
         private Dictionary<string, string> _Environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
-            ["ASPNETCORE_URLS"] = "http://localhost:5129"
+            ["ASPNETCORE_URLS"] = "http://localhost:5129",
+            // "Development" laesst Blazor die echte Exception zeigen statt nur
+            // "An unhandled error has occurred" - entspricht -DetailedErrors in start-compiled.ps1.
+            ["ASPNETCORE_ENVIRONMENT"] = "Production"
         };
         [Description("Environment variables")]
         public Dictionary<string, string> Environment { get => _Environment; set { if (!object.Equals(_Environment, value)) { _Environment = value; } } }

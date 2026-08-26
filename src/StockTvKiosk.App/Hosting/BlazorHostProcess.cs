@@ -13,10 +13,20 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 {
     private Process? _process;
     private bool _startedByUs;
+    private CancellationTokenSource? _readinessCts;
+    private Task _readiness = Task.CompletedTask;
+    private string? _stdoutLogPath;
+    private string? _stderrLogPath;
 
     public bool IsManaged => options.Enabled;
 
-    public void StartIfEnabled()
+    /// <param name="readinessProbe">
+    /// Adresse, unter der die Blazor-Anwendung antworten muss. StockTV ist eine Web-App: der
+    /// gestartete Prozess sagt noch nichts darueber aus, ob der HTTP-Server steht. Ohne diese
+    /// Pruefung bliebe ein Startfehler unsichtbar - der Kiosk zeigte nur endlos seine
+    /// Statusseite. Wird nicht abgewartet, damit die Fenster sofort erscheinen.
+    /// </param>
+    public void StartIfEnabled(Uri? readinessProbe = null)
     {
         if (!options.Enabled)
         {
@@ -52,7 +62,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         foreach (var (key, value) in options.Environment)
             startInfo.Environment[key] = value;
 
-        string? logDirectory = ResolveLogDirectory();
+        string? logDirectory = ResolveLogDirectory(executable);
         if (logDirectory is not null)
         {
             startInfo.RedirectStandardOutput = true;
@@ -73,6 +83,12 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 
             if (logDirectory is not null)
                 PipeOutputToFiles(_process, logDirectory);
+
+            if (readinessProbe is not null && options.ReadinessTimeoutSeconds > 0)
+            {
+                _readinessCts = new CancellationTokenSource();
+                _readiness = WaitUntilReadyAsync(readinessProbe, _process, _readinessCts.Token);
+            }
         }
         catch (Exception ex)
         {
@@ -80,7 +96,80 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         }
     }
 
-    private string? ResolveLogDirectory()
+    /// <summary>
+    /// Wartet, bis die Blazor-Anwendung auf HTTP antwortet - wie die Warteschleife in
+    /// start-compiled.ps1. Bricht sofort ab, wenn sich der Prozess vorher beendet: das ist der
+    /// haeufige Startfehler (belegter Port, fehlende Runtime) und ohne diese Meldung waere er
+    /// nur an einer endlosen Statusseite erkennbar.
+    /// </summary>
+    private async Task WaitUntilReadyAsync(Uri probe, Process process, CancellationToken cancellationToken)
+    {
+        var started = DateTimeOffset.UtcNow;
+        var deadline = started.AddSeconds(options.ReadinessTimeoutSeconds);
+
+        using var http = new HttpClient(new HttpClientHandler { UseProxy = false })
+        {
+            Timeout = TimeSpan.FromSeconds(2)
+        };
+
+        logger.LogInformation("Warte auf StockTV unter {Url} (bis zu {Timeout} s).",
+            probe, options.ReadinessTimeoutSeconds);
+
+        while (!cancellationToken.IsCancellationRequested && DateTimeOffset.UtcNow < deadline)
+        {
+            if (process.HasExited)
+            {
+                logger.LogError(
+                    "StockTV hat sich beim Start wieder beendet (Exitcode {Code}). {Hint}",
+                    process.ExitCode, LogHint());
+                return;
+            }
+
+            try
+            {
+                using var response = await http.GetAsync(
+                    probe, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+                logger.LogInformation(
+                    "StockTV antwortet nach {Seconds:0.0} s auf {Url} (HTTP {Status}).",
+                    (DateTimeOffset.UtcNow - started).TotalSeconds, probe, (int)response.StatusCode);
+                return;
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
+            catch (Exception)
+            {
+                // Noch nicht oben - das ist waehrend des Hochfahrens der Normalfall.
+            }
+
+            try { await Task.Delay(TimeSpan.FromSeconds(1.5), cancellationToken); }
+            catch (OperationCanceledException) { return; }
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
+        // Anders als das PowerShell-Skript wird der Prozess hier NICHT beendet: er laeuft
+        // moeglicherweise nur langsam an, und ein Abschuss wuerde garantieren, dass die URL
+        // nie erreichbar wird. Die Fenster warten ohnehin selbsttaetig weiter.
+        logger.LogError(
+            "StockTV antwortet nach {Timeout} s noch nicht auf {Url}. Der Kiosk zeigt weiter seine " +
+            "Statusseite und laedt automatisch nach, sobald die Anwendung erreichbar ist. {Hint}",
+            options.ReadinessTimeoutSeconds, probe, LogHint());
+    }
+
+    private string LogHint()
+        => _stderrLogPath is null
+            ? "Konsolenausgabe wird nicht mitgeschrieben - LogDirectory setzen, um die Ursache zu sehen."
+            : $"Ursache siehe {_stderrLogPath} bzw. {_stdoutLogPath}.";
+
+    /// <summary>
+    /// Legt das Logverzeichnis relativ zur StockTV-Anwendung an, nicht relativ zum Kiosk:
+    /// die Konsolenausgabe gehoert zu StockTV und wird dort gesucht (wie in start-compiled.ps1).
+    /// </summary>
+    private string? ResolveLogDirectory(FileInfo executable)
     {
         if (string.IsNullOrWhiteSpace(options.LogDirectory))
             return null;
@@ -89,7 +178,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         {
             string directory = Path.IsPathRooted(options.LogDirectory)
                 ? options.LogDirectory
-                : Path.Combine(AppContext.BaseDirectory, options.LogDirectory);
+                : Path.Combine(executable.DirectoryName!, options.LogDirectory);
 
             Directory.CreateDirectory(directory);
             return directory;
@@ -103,10 +192,12 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 
     private void PipeOutputToFiles(Process process, string logDirectory)
     {
-        var stdout = new StreamWriter(
-            Path.Combine(logDirectory, "stocktv-console.log"), append: true) { AutoFlush = true };
-        var stderr = new StreamWriter(
-            Path.Combine(logDirectory, "stocktv-console-error.log"), append: true) { AutoFlush = true };
+        _stdoutLogPath = Path.Combine(logDirectory, "stocktv-console.log");
+        _stderrLogPath = Path.Combine(logDirectory, "stocktv-console-error.log");
+        logger.LogInformation("Konsolen-Log von StockTV: {Path}", _stdoutLogPath);
+
+        var stdout = new StreamWriter(_stdoutLogPath, append: true) { AutoFlush = true };
+        var stderr = new StreamWriter(_stderrLogPath, append: true) { AutoFlush = true };
 
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.WriteLine(e.Data); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.WriteLine(e.Data); };
@@ -229,6 +320,16 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 
     public void Dispose()
     {
+        // Erst die Warteschleife stoppen, sonst meldet sie beim Herunterfahren noch einen
+        // "hat sich beendet"-Fehler, den wir selbst ausgeloest haben.
+        if (_readinessCts is not null)
+        {
+            _readinessCts.Cancel();
+            try { _readiness.Wait(TimeSpan.FromSeconds(3)); } catch { /* beim Beenden egal */ }
+            _readinessCts.Dispose();
+            _readinessCts = null;
+        }
+
         var process = _process;
         _process = null;
 
