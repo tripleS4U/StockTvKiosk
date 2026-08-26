@@ -93,52 +93,27 @@ namespace StockTvKiosk.App
     /// </summary>
     public partial class AppConfig
     {
-        #region Eigenschaften
-        // WPF-Binding auf die Konfiguration:
-        //   xmlns:config="clr-namespace:<Namespace dieser Datei>"
-        //   Text="{Binding Source={x:Static config:AppConfig.Instance}, Path=Password, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
 
-        private string _Password = "";
-        /// <summary>
-        /// Geheimes Passwort (wird verschluesselt gespeichert)
-        /// </summary>
-        [Secret]
-        [Description("Geheimes Passwort (wird verschluesselt gespeichert)")]
-        public string Password
+
+        private LoggingOptions _Logging = new LoggingOptions();
+        [Description("Logging configuration")]
+        public LoggingOptions Logging
         {
-            get { return this._Password; }
-            set
-            {
-                if (!object.Equals(this._Password, value))
-                {
-                    this._Password = value;
-                    this.RaisePropertyChanged();
-                }
-            }
+            get => _Logging;
+            set { if (!object.Equals(_Logging, value)) { _Logging = value; RaisePropertyChanged(); } }
         }
 
-        /// <summary>
-        /// Benutzername fuer die Anmeldung
-        /// </summary>
-        [Description("Benutzername fuer die Anmeldung")]
-        public string UserName { get; set; }
+        private KioskOptions _Kiosk = new KioskOptions();
+        [Description("Kiosk configuration")]
+        public KioskOptions Kiosk
+        {
+            get => _Kiosk;
+            set { if (!object.Equals(_Kiosk, value)) { _Kiosk = value; RaisePropertyChanged(); } }
+        }
 
-        /// <summary>
-        /// API-Schluessel (wird verschluesselt gespeichert)
-        /// </summary>
-        [Secret]
-        [Description("API-Schluessel (wird verschluesselt gespeichert)")]
-        public string ApiKey { get; set; }
-
-        /// <summary>
-        /// Server-Adresse oder Hostname
-        /// </summary>
-        [Description("Server-Adresse oder Hostname")]
-        public string Server { get; set; }
-
-        #endregion
 
     }
+
     /// <summary>
     /// DON'T TOUCH ME
     /// </summary>
