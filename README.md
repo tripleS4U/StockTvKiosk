@@ -80,9 +80,9 @@ dort vergessenes `true` haette zur Folge, dass der Kiosk gar nichts mehr anzeigt
 `--dry-run`, `--dry-run true` und `--dry-run=true` sind gleichwertig; `--dry-run false`
 schaltet ausdruecklich ab.
 
-> Enum-Werte stehen in der Datei als Zahl (`"WindowMode": 0`). Reihenfolge bei
-> `WindowMode`: `0` = `Borderless`, `1` = `FullScreen`; bei `SingleScreenFallback`:
-> `0` = `SideBySide`, `1` = `PrimaryOnly`.
+Enum-Werte stehen als Name in der Datei (`"WindowMode": "FullScreen"`,
+`"SingleScreenFallback": "PrimaryOnly"`). Zahlwerte aus aelteren Dateien werden beim Lesen
+weiterhin akzeptiert und beim naechsten Speichern durch den Namen ersetzt.
 
 ### Wichtige Einstellungen
 

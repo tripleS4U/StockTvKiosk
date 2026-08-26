@@ -43,6 +43,10 @@ namespace StockTvKiosk.App
     //                  Alte Dateien mit "*_Description"-Feldern (Legacy-Format) werden beim Lesen
     //                  ebenfalls ignoriert/uebersprungen.
     //
+    // Enums          : werden als Name geschrieben ("FullScreen"), nicht als Zahl, damit die
+    //                  Datei von Hand bearbeitbar bleibt. Beim Lesen werden beide Formen
+    //                  akzeptiert, aeltere Dateien mit Zahlwerten funktionieren weiter.
+    //
     // Verwendung     : AppConfig.Instance.Password        lesen/schreiben
     //                  AppConfig.Save()                         speichern
     //                  AppConfig.Reload()                       nicht gespeicherte Aenderungen verwerfen
@@ -367,6 +371,11 @@ namespace StockTvKiosk.App
                 // Umlaute bleiben lesbar statt als \uXXXX. Unbedenklich, weil die Datei nie in
                 // einen HTML- oder Skript-Kontext eingebettet wird.
                 result.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
+                // Enums als Name statt als Zahl: "WindowMode": "FullScreen" ist von Hand
+                // bearbeitbar, "WindowMode": 1 nicht. Der Konverter liest weiterhin auch
+                // Zahlen (allowIntegerValues ist standardmaessig true), aeltere Dateien
+                // bleiben also lesbar. Der XmlSerializer schreibt Enums ohnehin als Name.
+                result.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
                 return result;
             }
             public static AppConfig FromFile(string filePath)
