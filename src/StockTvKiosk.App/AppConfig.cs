@@ -1,4 +1,5 @@
-﻿using System;
+﻿using StockTvKiosk.Core.Configuration;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -105,7 +106,7 @@ namespace StockTvKiosk.App
 
         private KioskOptions _Kiosk = new KioskOptions();
         [Description("Kiosk configuration")]
-        public KioskOptions Kiosk
+        public KioskOptions KioskOptions
         {
             get => _Kiosk;
             set { if (!object.Equals(_Kiosk, value)) { _Kiosk = value; RaisePropertyChanged(); } }

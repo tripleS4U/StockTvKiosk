@@ -33,8 +33,4 @@
     <ProjectReference Include="..\StockTvKiosk.Core\StockTvKiosk.Core.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>

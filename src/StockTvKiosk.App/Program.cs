@@ -4,6 +4,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using StockTvKiosk.App.Logging;
 using StockTvKiosk.Core.Configuration;
+using static StockTvKiosk.App.AppConfig;
 
 namespace StockTvKiosk.App;
 
@@ -40,7 +41,7 @@ internal static class Program
         AttachParentConsole();
 
         Configuration = BuildConfiguration(args);
-        Options = Configuration.GetSection(KioskOptions.SectionName).Get<KioskOptions>() ?? new KioskOptions();
+        Options = AppConfig.Instance.KioskOptions;//  Configuration.GetSection(KioskOptions.SectionName).Get<KioskOptions>() ?? new KioskOptions();
         LoggerFactory = BuildLoggerFactory(Configuration);
 
         var logger = LoggerFactory.CreateLogger("StockTvKiosk");

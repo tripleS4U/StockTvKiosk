@@ -15,7 +15,7 @@ public static class KioskLayoutPlanner
     public static KioskLayout Plan(
         IReadOnlyList<ScreenInfo> screens,
         DisplayModeInfo displayMode,
-        KioskOptions options)
+        StockTvKiosk.Core.Configuration.KioskOptions options)
     {
         ArgumentNullException.ThrowIfNull(screens);
         ArgumentNullException.ThrowIfNull(displayMode);
