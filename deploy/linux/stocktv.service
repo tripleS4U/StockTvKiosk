@@ -1,0 +1,28 @@
+[Unit]
+# StockTV-Blazor-Anwendung. Bewusst eine eigene Unit, getrennt vom Kiosk:
+# so laesst sich die Anzeige neu starten, ohne die laufende Turnierwertung anzufassen.
+Description=StockTV Blazor-Anwendung
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__STOCKTV_DIR__
+ExecStart=__STOCKTV_DIR__/StockTvBlazor
+Environment=ASPNETCORE_URLS=http://localhost:__PORT__
+Environment=DOTNET_EnableDiagnostics=0
+
+Restart=always
+RestartSec=5
+
+# StockTV bindet NetMQ auf 4747/4748. SIGINT gibt der Anwendung Gelegenheit, die Ports
+# sauber freizugeben, bevor systemd nach TimeoutStopSec haerter nachfasst.
+KillSignal=SIGINT
+TimeoutStopSec=20
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stocktv
+
+[Install]
+WantedBy=default.target

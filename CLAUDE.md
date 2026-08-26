@@ -76,8 +76,15 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
   extern gestartet; ein = der Kiosk startet und beendet StockTV selbst und räumt eine
   laufende Vorinstanz wegen der NetMQ-Ports 4747/4748 ab.
 
+- **Autostart:** Umgesetzt für beide Plattformen unter `deploy/` — systemd-User-Units für Linux,
+  Aufgabenplanung für Windows. Jeweils zwei getrennte Einheiten (StockTV und Anzeige), damit sich
+  die Anzeige neu starten lässt, ohne die laufende Wertung anzufassen. Deshalb bleibt
+  `Kiosk:BlazorHost:Enabled` im Autostart-Betrieb auf `false`.
+- **`AllowExitShortcut`:** Bleibt auf `true`. Mit Autostart holt systemd den Kiosk nach 5 s
+  zurück, der Windows-Task binnen einer Minute — Shift+Esc ist damit ein „Anzeige neu laden"
+  statt eines Ausfalls. Auf `false` nur, wenn der Kiosk StockTV selbst verwaltet oder kein
+  Autostart eingerichtet ist (Details im README).
+
 ## Offene Punkte / vom Nutzer zu klären
 
-- Ob die App als Autostart-Dienst (Windows-Task / systemd-Service) für Kiosk-Betrieb eingerichtet werden soll.
-- Ob `AllowExitShortcut` (Shift+Esc) im Feldbetrieb abgeschaltet werden soll.
 - Ob es weitere Startseiten außer `turnier` und `bestof` gibt, die als Primär-URL vorkommen.

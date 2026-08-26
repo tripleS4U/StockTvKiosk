@@ -1,0 +1,34 @@
+[Unit]
+Description=StockTV Kiosk-Anzeige
+# Die Anzeige braucht eine laufende grafische Sitzung ...
+After=graphical-session.target
+PartOf=graphical-session.target
+# ... und sinnvollerweise die Blazor-Anwendung. "Wants" statt "Requires": ist StockTV
+# noch nicht da, zeigt der Kiosk seine Statusseite und laedt selbsttaetig nach.
+Wants=stocktv.service
+After=stocktv.service
+
+[Service]
+Type=simple
+WorkingDirectory=__KIOSK_DIR__
+
+# DISPLAY nur als Rueckfallwert. "Environment=DISPLAY=..." waere falsch: das UEBERSCHREIBT
+# ein aus der Sitzung geerbtes DISPLAY und zwaenge den Kiosk auf :0, auch wenn die Sitzung
+# auf :1 laeuft. Die Ersetzung in der Shell nimmt den geerbten Wert, wenn es einen gibt.
+ExecStart=/bin/sh -c 'DISPLAY="${DISPLAY:-__DISPLAY__}" exec __KIOSK_DIR__/StockTvKiosk'
+
+# Ohne diese Wartezeit startet der Kiosk gelegentlich vor dem X-Server und stirbt sofort.
+# Auf den X11-Socket zu warten kommt ohne zusaetzliche Pakete aus (xset o. Ae. fehlt auf Lite).
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do [ -e /tmp/.X11-unix/X0 ] && exit 0; sleep 1; done; echo "X11-Socket nicht gefunden - starte trotzdem (Wayland?)"; exit 0'
+
+# Restart=always gilt fuer JEDEN Exit, auch fuer den sauberen per Shift+Esc. Damit wird
+# der Notausstieg zu einem "Anzeige neu laden" statt zu einem Ausfall.
+Restart=always
+RestartSec=5
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=stocktv-kiosk
+
+[Install]
+WantedBy=graphical-session.target
