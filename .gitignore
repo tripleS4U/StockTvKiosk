@@ -1,0 +1,7 @@
+bin/
+obj/
+_logs/
+*.user
+.vs/
+publish/
+artifacts/
