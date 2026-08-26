@@ -3,7 +3,7 @@
         x:Class="StockTvKiosk.App.Views.KioskWindow"
         Title="StockTV"
         Background="#101418"
-        SystemDecorations="None"
+        WindowDecorations="None"
         ShowInTaskbar="False"
         CanResize="False"
         WindowStartupLocation="Manual">

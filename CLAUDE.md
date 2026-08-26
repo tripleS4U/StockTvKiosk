@@ -34,7 +34,7 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
      - Nur 1 Screen → nur ein Fenster mit der Primär-URL, Hinweis loggen, dass kein sekundärer Monitor gefunden wurde.
 
 3. **Fenster-Erstellung**
-   - Für jeden erkannten Screen ein randloses Vollbildfenster (`SystemDecorations = None`, Position/Größe = `Bounds`/`WorkingArea` des jeweiligen Screens).
+   - Für jeden erkannten Screen ein randloses Vollbildfenster: `WindowDecorations = None`, Position/Größe = `Bounds`/`WorkingArea` des jeweiligen Screens. In Avalonia 12 ersetzt `WindowDecorations` das obsolete `SystemDecorations`.
    - Jedes Fenster enthält eine WebView-Komponente, die die zugehörige URL lädt.
 
 4. **Konfiguration**
