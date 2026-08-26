@@ -73,6 +73,27 @@ public class KioskLayoutPlannerTests
         Assert.Equal(0, Assert.Single(layout.Windows, w => w.Role == WindowRole.Secondary).ScreenIndex);
     }
 
+    [Fact]
+    public void ZweiterBildschirmLinks_MitNegativemOffset_WirdKorrektBelegt()
+    {
+        // Reale Testkonfiguration: der zweite Monitor liegt links vom primaeren,
+        // seine X-Koordinate ist deshalb negativ.
+        ScreenInfo[] screens =
+        [
+            Screens.Make(0, -1920, 0, 1920, 1200),
+            Screens.Make(1, 0, 0, 2560, 1440, isPrimary: true)
+        ];
+
+        var layout = KioskLayoutPlanner.Plan(screens, Mode(DisplayMode.Extended, 2), Options());
+
+        var main = Assert.Single(layout.Windows, w => w.Role == WindowRole.Primary);
+        var mirror = Assert.Single(layout.Windows, w => w.Role == WindowRole.Secondary);
+
+        Assert.Equal(new ScreenRect(0, 0, 2560, 1440), main.Bounds);
+        Assert.Equal(new ScreenRect(-1920, 0, 1920, 1200), mirror.Bounds);
+        Assert.Empty(layout.Warnings);
+    }
+
     // ---------- Nur ein Bildschirm ----------
 
     [Fact]

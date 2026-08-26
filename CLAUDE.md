@@ -16,8 +16,8 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 ## Tech-Stack
 
 - **.NET 10** (aktuelle Version verwenden — `dotnet --version` prüfen und `global.json` entsprechend anlegen)
-- **Avalonia UI** als Cross-Platform-UI-Framework (Windows + Linux, X11 und nach Möglichkeit Wayland)
-- **WebView-Integration** zum Laden der Blazor-URLs innerhalb eines nativen Avalonia-Fensters (z. B. `Avalonia.WebView` bzw. aktuell empfohlenes Paket recherchieren, da sich das Avalonia-WebView-Ökosystem schnell weiterentwickelt — bei Unsicherheit im Web nach dem aktuellen Stand für .NET 10 / Avalonia suchen, bevor eine Paketentscheidung getroffen wird)
+- **Avalonia UI 12.1.1** als Cross-Platform-UI-Framework (Windows + Linux; v12 bringt native Wayland-Unterstützung)
+- **`Avalonia.Controls.WebView` 12.1.0** — entschieden am 26.08.2026. Seit Avalonia 12 ist der WebView offiziell, quelloffen (MIT) und kostenlos; er nutzt die native Engine der Plattform (WebView2 / WPE bzw. WebKitGTK) statt gebündeltem Chromium. Damit sind die früher nötigen Drittanbieter-Pakete (`Avalonia.WebView`, `WebViewControl-Avalonia`/CefGlue) hinfällig.
 - Konfiguration über `appsettings.json` (Primär-URL, Sekundär-URL, Fallback-Verhalten) sowie optionale Kommandozeilen-Overrides
 
 ## Architektur / Vorgehen
@@ -25,7 +25,7 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 1. **Projekt-Setup**
    - Solution mit Avalonia-App-Projekt (`dotnet new avalonia.app`) auf Basis von .NET 10 anlegen.
    - `global.json` mit fixierter SDK-Version für Reproduzierbarkeit.
-   - Publish-Targets für `win-x64` und `linux-x64` (self-contained) einrichten.
+   - Publish-Targets für `win-x64`, `linux-x64` und **`linux-arm64`** (self-contained) einrichten. `linux-arm64` ist das eigentliche Produktivziel (Raspberry Pi 4, 64-bit Raspberry Pi OS), `linux-x64` dient dem Vortest auf PC/VM.
 
 2. **Screen-Erkennung**
    - Über Avalonias `Screens`-API (`TopLevel.Screens`, `Screens.All`, `Screens.Primary`) alle Displays auslesen.
@@ -62,9 +62,22 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 - Commits klein und nachvollziehbar halten (Setup → Screen-Erkennung → Fenstererstellung → WebView-Integration → Konfiguration → Logging → Tests).
 - Nach jedem größeren Schritt kurz zusammenfassen, was implementiert wurde und was als Nächstes ansteht.
 
+## Geklärte Punkte (26.08.2026)
+
+- **URLs:** Die Blazor-App ist StockTV (`StockTvBlazor.exe`) auf `http://localhost:5129`.
+  Primär `/turnier` (Bedienfenster, Numpad-Eingabe), sekundär `/display2` (Spiegel).
+  Beides in `appsettings.json` und per `--primary-url` / `--secondary-url` überschreibbar.
+- **Verbindungsabbruch:** Lokale, eingebettete Statusseite + Auto-Retry alle 5 s, automatischer
+  Reload, sobald der Server antwortet. Konfigurierbar unter `Kiosk:Retry`.
+- **Wayland:** X11 ist die primäre Linux-Zielplattform. Wayland läuft, aber die
+  Fensterpositionierung liegt dort beim Compositor — der Kiosk erkennt das und warnt im Log.
+  Auf Raspberry Pi OS Bookworm per `raspi-config` auf X11 stellen.
+- **Prozess-Management:** Konfigurierbar (`Kiosk:BlazorHost:Enabled`). Aus = StockTV wird
+  extern gestartet; ein = der Kiosk startet und beendet StockTV selbst und räumt eine
+  laufende Vorinstanz wegen der NetMQ-Ports 4747/4748 ab.
+
 ## Offene Punkte / vom Nutzer zu klären
 
-- Exakte Primär- und Sekundär-URLs der Blazor-App (aktuell Platzhalter in `appsettings.json`).
-- Gewünschtes Verhalten bei Verbindungsabbruch zur Blazor-App (Retry-Intervall, Fehlerseite).
-- Ob Wayland-Unterstützung zwingend erforderlich ist oder ob X11 als primäre Linux-Zielplattform ausreicht.
 - Ob die App als Autostart-Dienst (Windows-Task / systemd-Service) für Kiosk-Betrieb eingerichtet werden soll.
+- Ob `AllowExitShortcut` (Shift+Esc) im Feldbetrieb abgeschaltet werden soll.
+- Ob es weitere Startseiten außer `turnier` und `bestof` gibt, die als Primär-URL vorkommen.

@@ -5,6 +5,12 @@ public sealed class KioskOptions
 {
     public const string SectionName = "Kiosk";
 
+    /// <summary>
+    /// Bildschirme erkennen, den Fensterplan protokollieren und beenden, ohne ein Fenster zu
+    /// oeffnen. Fuer die Inbetriebnahme per SSH ("was wuerde die App hier tun?") und fuer Tests.
+    /// </summary>
+    public bool DryRun { get; set; }
+
     public UrlOptions Urls { get; set; } = new();
     public DisplayOptions Display { get; set; } = new();
     public RetryOptions Retry { get; set; } = new();
@@ -93,8 +99,13 @@ public sealed class RetryOptions
     /// <summary>Lokale Fehlerseite anzeigen, statt die Browser-Standardfehlerseite stehen zu lassen.</summary>
     public bool ShowErrorPage { get; set; } = true;
 
-    /// <summary>Timeout des HTTP-Erreichbarkeitschecks.</summary>
-    public int ProbeTimeoutSeconds { get; set; } = 3;
+    /// <summary>
+    /// Timeout des HTTP-Erreichbarkeitschecks. Nicht zu knapp waehlen: "localhost" loest
+    /// zuerst auf ::1 auf, und der IPv6-Versuch braucht rund 2 s, bevor auf 127.0.0.1
+    /// zurueckgefallen wird. Bei zu kurzem Timeout meldet der Kiosk deshalb "Zeitueberschreitung",
+    /// obwohl die Verbindung schlicht abgelehnt wurde.
+    /// </summary>
+    public int ProbeTimeoutSeconds { get; set; } = 5;
 }
 
 /// <summary>

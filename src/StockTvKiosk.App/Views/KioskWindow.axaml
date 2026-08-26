@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="StockTvKiosk.App.Views.KioskWindow"
+        Title="StockTV"
+        Background="#101418"
+        SystemDecorations="None"
+        ShowInTaskbar="False"
+        CanResize="False"
+        WindowStartupLocation="Manual">
+
+  <!-- Ein einziges Steuerelement: der native WebView fuellt das Fenster vollstaendig aus. -->
+  <NativeWebView x:Name="WebView" />
+
+</Window>

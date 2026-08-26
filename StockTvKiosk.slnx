@@ -1,0 +1,9 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/StockTvKiosk.App/StockTvKiosk.App.csproj" />
+    <Project Path="src/StockTvKiosk.Core/StockTvKiosk.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/StockTvKiosk.Core.Tests/StockTvKiosk.Core.Tests.csproj" />
+  </Folder>
+</Solution>
