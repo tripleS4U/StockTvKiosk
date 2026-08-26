@@ -14,7 +14,7 @@ public class KioskLayoutPlannerTests
     {
         var options = new KioskOptions
         {
-            Urls = new UrlOptions { PrimaryUrl = Primary, SecondaryUrl = Secondary }
+            Urls = new UrlsOptions { PrimaryUrl = Primary, SecondaryUrl = Secondary }
         };
         configure?.Invoke(options.Display);
         return options;

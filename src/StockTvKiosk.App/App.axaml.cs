@@ -45,7 +45,7 @@ public partial class App : Application
 
         // Optional: StockTV selbst starten. Bewusst nicht blockierend - die Fenster erscheinen
         // sofort mit der Statusseite und laden nach, sobald der Server antwortet.
-        if (!options.DryRun)
+        if (!Program.DryRun)
         {
             _blazorHost = new BlazorHostProcess(
                 options.BlazorHost, Program.LoggerFactory.CreateLogger<BlazorHostProcess>());
@@ -71,7 +71,7 @@ public partial class App : Application
         foreach (var plan in layout.Windows)
             _logger.LogInformation("  {Plan}", plan);
 
-        if (options.DryRun)
+        if (Program.DryRun)
         {
             _logger.LogInformation("DryRun aktiv - es wird kein Fenster geoeffnet, der Kiosk beendet sich.");
 

@@ -26,9 +26,9 @@ namespace StockTvKiosk.Core.Configuration
         [Description("Single screen fallback")]
         public SingleScreenFallback SingleScreenFallback { get; set; } = SingleScreenFallback.SideBySide;
 
-        private string _WindowMode = "Borderless";
+        //private string _WindowMode = "Borderless";
         [Description("Window mode")]
-        public string WindowMode { get => _WindowMode; set { if (!object.Equals(_WindowMode, value)) { _WindowMode = value; } } }
+        public WindowMode WindowMode { get; set; } = WindowMode.Borderless;
 
         private bool _UseWorkingArea = false;
         [Description("Use working area")]

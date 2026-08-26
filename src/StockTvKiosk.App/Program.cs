@@ -33,6 +33,13 @@ internal static class Program
     public static ILoggerFactory LoggerFactory { get; private set; } = null!;
     public static KioskOptions Options { get; private set; } = null!;
 
+    /// <summary>
+    /// Nur erkennen und protokollieren, kein Fenster oeffnen (--dry-run). Bewusst NICHT Teil
+    /// von <see cref="KioskOptions"/>: der Schalter gilt fuer genau einen Programmlauf und
+    /// haette in der persistierten Einstellungsdatei nichts verloren.
+    /// </summary>
+    public static bool DryRun { get; private set; }
+
     [STAThread]
     public static int Main(string[] args)
     {
@@ -41,7 +48,8 @@ internal static class Program
         AttachParentConsole();
 
         Configuration = BuildConfiguration(args);
-        Options = AppConfig.Instance.KioskOptions;//  Configuration.GetSection(KioskOptions.SectionName).Get<KioskOptions>() ?? new KioskOptions();
+        Options = AppConfig.Instance.KioskOptions;
+        DryRun = Configuration.GetValue<bool>("Kiosk:DryRun");
         LoggerFactory = BuildLoggerFactory(Configuration);
 
         var logger = LoggerFactory.CreateLogger("StockTvKiosk");

@@ -8,25 +8,25 @@ namespace StockTvKiosk.Core.Configuration
         [Description("Enable Blazor host")]
         public bool Enabled { get => _Enabled; set { if (!object.Equals(_Enabled, value)) { _Enabled = value; } } }
 
-        private string _ExecutablePath = null;
+        private string? _ExecutablePath = null;
         [Description("Executable path")]
-        public string ExecutablePath { get => _ExecutablePath; set { if (!object.Equals(_ExecutablePath, value)) { _ExecutablePath = value; } } }
+        public string? ExecutablePath { get => _ExecutablePath; set { if (!object.Equals(_ExecutablePath, value)) { _ExecutablePath = value; } } }
 
         private string _ExecutableName = "StockTvBlazor";
         [Description("Executable name")]
         public string ExecutableName { get => _ExecutableName; set { if (!object.Equals(_ExecutableName, value)) { _ExecutableName = value; } } }
 
-        private string _SearchRoot = null;
+        private string? _SearchRoot = null;
         [Description("Search root")]
-        public string SearchRoot { get => _SearchRoot; set { if (!object.Equals(_SearchRoot, value)) { _SearchRoot = value; } } }
+        public string? SearchRoot { get => _SearchRoot; set { if (!object.Equals(_SearchRoot, value)) { _SearchRoot = value; } } }
 
-        private string _Arguments = null;
+        private string? _Arguments = null;
         [Description("Arguments")]
-        public string Arguments { get => _Arguments; set { if (!object.Equals(_Arguments, value)) { _Arguments = value; } } }
+        public string? Arguments { get => _Arguments; set { if (!object.Equals(_Arguments, value)) { _Arguments = value; } } }
 
-        private string _WorkingDirectory = null;
+        private string? _WorkingDirectory = null;
         [Description("Working directory")]
-        public string WorkingDirectory { get => _WorkingDirectory; set { if (!object.Equals(_WorkingDirectory, value)) { _WorkingDirectory = value; } } }
+        public string? WorkingDirectory { get => _WorkingDirectory; set { if (!object.Equals(_WorkingDirectory, value)) { _WorkingDirectory = value; } } }
 
         private Dictionary<string, string> _Environment = new Dictionary<string, string>(StringComparer.Ordinal)
         {
