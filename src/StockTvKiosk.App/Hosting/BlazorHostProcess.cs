@@ -30,7 +30,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         {
             logger.LogError(
                 "StockTV-Anwendung wurde nicht gefunden (gesucht: {Name}). " +
-                "Bitte Kiosk:BlazorHost:ExecutablePath setzen. Der Kiosk wartet weiter auf die URL.",
+                "Bitte KioskOptions > BlazorHost > ExecutablePath setzen. Der Kiosk wartet weiter auf die URL.",
                 options.ExecutableName);
             return;
         }
@@ -155,19 +155,38 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 
     private FileInfo? ResolveExecutable()
     {
+        string fileName = OperatingSystem.IsWindows()
+            ? options.ExecutableName + ".exe"
+            : options.ExecutableName;
+
         if (!string.IsNullOrWhiteSpace(options.ExecutablePath))
         {
             var file = new FileInfo(options.ExecutablePath);
             if (file.Exists)
                 return file;
 
-            logger.LogError("Kiosk:BlazorHost:ExecutablePath existiert nicht: {Path}", file.FullName);
+            // Ein Verzeichnis statt der Datei ist ein naheliegender Eintrag - dann dort nach
+            // ExecutableName suchen, statt die Konfiguration wegen einer Formalie abzulehnen.
+            if (Directory.Exists(options.ExecutablePath))
+            {
+                var inDirectory = new FileInfo(Path.Combine(options.ExecutablePath, fileName));
+                if (inDirectory.Exists)
+                {
+                    logger.LogInformation(
+                        "ExecutablePath zeigt auf ein Verzeichnis - verwende {Path}.", inDirectory.FullName);
+                    return inDirectory;
+                }
+
+                logger.LogError(
+                    "KioskOptions > BlazorHost > ExecutablePath ist ein Verzeichnis, aber {Name} liegt nicht darin: {Path}",
+                    fileName, options.ExecutablePath);
+                return null;
+            }
+
+            logger.LogError(
+                "KioskOptions > BlazorHost > ExecutablePath existiert nicht: {Path}", file.FullName);
             return null;
         }
-
-        string fileName = OperatingSystem.IsWindows()
-            ? options.ExecutableName + ".exe"
-            : options.ExecutableName;
 
         string root = string.IsNullOrWhiteSpace(options.SearchRoot)
             ? AppContext.BaseDirectory
