@@ -140,7 +140,9 @@ namespace StockTvKiosk.App
             bool foundPlainTextSecret = false;
             WalkSecrets(this, value =>
             {
-                if (!Secrets.IsEncrypted(value))
+                // Leere Werte zaehlen nicht als Klartext - sonst wuerde ein nicht gesetztes
+                // Geheimnis die Datei bei jedem Programmstart neu schreiben lassen.
+                if (!string.IsNullOrEmpty(value) && !Secrets.IsEncrypted(value))
                     foundPlainTextSecret = true;
                 return Secrets.UnprotectIfRequired(value);
             });
@@ -173,7 +175,7 @@ namespace StockTvKiosk.App
 
                 if (property.PropertyType == typeof(string))
                 {
-                    if (!property.IsDefined(typeof(SecretAttribute), true))
+                    if (!HasSecretAttribute(property))
                         continue;
                     string value = property.GetValue(instance) as string;
                     if (value == null)
@@ -187,13 +189,41 @@ namespace StockTvKiosk.App
             }
         }
         /// <summary>
-        /// True fuer selbst definierte Klassen (gleiche Assembly wie AppConfig), die daher
-        /// beim Verschluesseln/Klonen rekursiv betrachtet werden. BCL-Typen wie string, int,
+        /// Erkennt [Secret] am Namen statt am Typ. Konfigurations-Klassen duerfen in einem
+        /// anderen Projekt liegen als AppConfig - das kann dann nicht auf dieses Attribut hier
+        /// zugreifen und bringt sein eigenes gleichen Namens mit (wie bei [Description]).
+        /// </summary>
+        private static bool HasSecretAttribute(System.Reflection.PropertyInfo property)
+        {
+            foreach (object attribute in property.GetCustomAttributes(true))
+            {
+                if (attribute.GetType().Name == "SecretAttribute")
+                    return true;
+            }
+            return false;
+        }
+        /// <summary>
+        /// True fuer selbst definierte Konfigurations-Klassen, die daher beim
+        /// Verschluesseln/Klonen rekursiv betrachtet werden. BCL-Typen wie string, int,
         /// DateTime oder List&lt;&gt; liefern hier bewusst false.
         /// </summary>
+        /// <remarks>
+        /// Abgegrenzt wird ueber den Namensraum, nicht ueber die Assembly: die Options-Klassen
+        /// koennen - wie in diesem Projekt - in einer eigenen Bibliothek liegen. Mit dem
+        /// frueheren Assembly-Vergleich blieben sie unsichtbar, [Secret] waere darin wirkungslos
+        /// geblieben und DeepClone haette sie mit dem Original geteilt (womit EncryptSecrets
+        /// beim Speichern die laufende Instanz veraendert haette).
+        /// </remarks>
         private static bool IsOwnConfigType(System.Type type)
         {
-            return type.IsClass && type != typeof(string) && type.Assembly == typeof(AppConfig).Assembly;
+            if (!type.IsClass || type == typeof(string) || type.IsArray)
+                return false;
+
+            string space = type.Namespace ?? "";
+            return space != "System"
+                && !space.StartsWith("System.", System.StringComparison.Ordinal)
+                && space != "Microsoft"
+                && !space.StartsWith("Microsoft.", System.StringComparison.Ordinal);
         }
         /// <summary>
         /// Tiefe Kopie inkl. aller verschachtelten, selbst definierten Konfigurations-Objekte.

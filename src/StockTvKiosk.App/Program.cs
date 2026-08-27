@@ -43,6 +43,7 @@ internal static class Program
         logger.LogInformation("StockTV-Kiosk startet auf {Os} ({Arch}).",
             RuntimeInformation.OSDescription, RuntimeInformation.OSArchitecture);
         logger.LogInformation("Konfiguration: {Path}", AppConfig.GetConfigFullName());
+        WriteBackConfig(logger);
 
         try
         {
@@ -65,6 +66,24 @@ internal static class Program
         => AppBuilder.Configure<App>()
                      .UsePlatformDetect()
                      .LogToTrace();
+
+    /// <summary>
+    /// Schreibt die eingelesene Konfiguration einmal zurueck. Damit stehen nach einem Update
+    /// auch neu hinzugekommene Einstellungen samt Standardwert in der Datei - sonst muesste
+    /// man wissen, dass es sie gibt, um sie eintragen zu koennen. Schlaegt das Schreiben fehl
+    /// (schreibgeschuetztes Verzeichnis), laeuft der Kiosk unveraendert mit den Werten weiter.
+    /// </summary>
+    private static void WriteBackConfig(ILogger logger)
+    {
+        try
+        {
+            AppConfig.Save();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Konfiguration konnte nicht zurueckgeschrieben werden - neue Einstellungen fehlen deshalb in der Datei.");
+        }
+    }
 
     /// <summary>
     /// Liest einen booleschen Schalter aus den Argumenten. Akzeptiert <c>--x</c>,

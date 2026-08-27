@@ -26,4 +26,26 @@ namespace StockTvKiosk.Core.Configuration
     }
 
 
+    /// <summary>Wie eine Systemaktion (Neustart, Anzeigemodus) ausgefuehrt wird.</summary>
+    public enum ControlMode
+    {
+        /// <summary>Passend zum erkannten Betriebssystem, ohne Zusatzkonfiguration.</summary>
+        Auto,
+
+        /// <summary>Ausschliesslich die in der Konfiguration hinterlegten Befehle verwenden.</summary>
+        CommandLine,
+
+        /// <summary>Aktion abgeschaltet - die Schnittstelle lehnt sie ab. Notausschalter.</summary>
+        Disabled
+    }
+
+    /// <summary>Lage des zweiten Bildschirms beim Erweitern (nur Linux/xrandr relevant).</summary>
+    public enum ExtendDirection
+    {
+        RightOf,
+        LeftOf,
+        Above,
+        Below
+    }
+
 }
