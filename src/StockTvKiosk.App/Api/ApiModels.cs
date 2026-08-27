@@ -98,6 +98,7 @@ public sealed record CapabilitiesResponse(
 /// <summary>Uebersetzt ein Ergebnis der Steuerung in eine HTTP-Antwort.</summary>
 internal static class ControlResultExtensions
 {
+    /// <param name="result">Ergebnis, das uebersetzt werden soll.</param>
     /// <param name="successStatusCode">
     /// 200 fuer sofort erledigte Aktionen, 202 fuer solche, die nur vorgemerkt wurden.
     /// </param>

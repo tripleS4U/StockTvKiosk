@@ -5,7 +5,7 @@ using StockTvKiosk.Core.Display;
 namespace StockTvKiosk.App.Services;
 
 /// <summary>
-/// Bruecke von Avalonias <see cref="Avalonia.Platform.Screens"/> auf das UI-freie
+/// Bruecke von Avalonias <see cref="Avalonia.Controls.Screens"/> auf das UI-freie
 /// <see cref="IScreenProvider"/> des Core-Projekts.
 /// </summary>
 /// <remarks>
