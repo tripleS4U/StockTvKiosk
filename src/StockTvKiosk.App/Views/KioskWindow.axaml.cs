@@ -49,11 +49,33 @@ public partial class KioskWindow : Window
         _connection = new WebViewConnectionController(WebView, plan, retry, logger);
     }
 
+    /// <summary>
+    /// Legt das Fenster auf einen anderen Bildschirm bzw. auf eine neue Groesse - nach einem
+    /// Wechsel zwischen "Duplizieren" und "Erweitern" stimmt die alte Anordnung nicht mehr.
+    /// Anders als <see cref="Configure"/> darf das am offenen Fenster passieren.
+    /// </summary>
+    public void Reposition(WindowPlan plan, DisplayOptions display)
+    {
+        _plan = plan;
+        ApplyBounds(plan, display);
+
+        _logger?.LogInformation("{Role}: neu angeordnet auf Bildschirm [{Screen}] bei {Bounds}.",
+            plan.Role, plan.ScreenIndex, plan.Bounds);
+    }
+
+    /// <summary>Laedt die Seite neu - inklusive Erreichbarkeitspruefung und Statusseite.</summary>
+    public void Reload() => _connection?.Reload();
+
     private void ApplyBounds(WindowPlan plan, DisplayOptions display)
     {
         // Position ist in physischen Pixeln, Width/Height in geraeteunabhaengigen Einheiten.
         // Ohne diese Umrechnung waere das Fenster auf einem skalierten Bildschirm zu gross.
         double scaling = plan.Scaling <= 0 ? 1.0 : plan.Scaling;
+
+        // Ein Vollbildfenster nimmt keine neue Position an - es haengt an seinem Bildschirm.
+        // Fuer die Neuanordnung muss es deshalb erst wieder ein normales Fenster werden.
+        if (WindowState == WindowState.FullScreen)
+            WindowState = WindowState.Normal;
 
         Position = new PixelPoint(plan.Bounds.X, plan.Bounds.Y);
         Width = plan.Bounds.Width / scaling;

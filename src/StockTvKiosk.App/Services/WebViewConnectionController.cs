@@ -59,6 +59,18 @@ internal sealed class WebViewConnectionController : IAsyncDisposable
 
     public void Start() => Restart();
 
+    /// <summary>
+    /// Laedt die Seite neu. Geht bewusst durch dieselbe Schleife wie der Start: haengt die
+    /// Blazor-App gerade, landet das Fenster auf der Statusseite und kommt von allein zurueck,
+    /// statt eine Browser-Fehlerseite stehen zu lassen.
+    /// </summary>
+    public void Reload()
+    {
+        _logger.LogInformation("{Role}: Neuladen angefordert.", _plan.Role);
+        _connected = false;
+        Restart();
+    }
+
     private void Restart()
     {
         var previous = _cts;

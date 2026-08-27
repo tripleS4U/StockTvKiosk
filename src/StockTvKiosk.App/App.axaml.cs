@@ -5,16 +5,14 @@ using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.Logging;
 using StockTvKiosk.App.Hosting;
 using StockTvKiosk.App.Services;
-using StockTvKiosk.App.Views;
 using StockTvKiosk.Core.Display;
-using StockTvKiosk.Core.Layout;
 
 namespace StockTvKiosk.App;
 
 public partial class App : Application
 {
-    private readonly List<KioskWindow> _windows = [];
     private BlazorHostProcess? _blazorHost;
+    private KioskWindowManager? _windows;
     private ILogger _logger = null!;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -52,27 +50,14 @@ public partial class App : Application
             _blazorHost.StartIfEnabled(ReadinessProbe(options.Urls.PrimaryUrl));
         }
 
-        // Avalonia liefert die Bildschirmliste nur ueber ein TopLevel. Das erste Fenster wird
-        // deshalb erzeugt (noch nicht angezeigt) und dient zugleich als Bildschirmquelle.
-        var probeWindow = new KioskWindow();
-        var screenProvider = new AvaloniaScreenProvider(probeWindow);
-        var screens = screenProvider.GetScreens();
+        WarnAboutWayland();
 
-        var displayMode = new MonitorDetector(
-            Program.LoggerFactory.CreateLogger<MonitorDetector>()).Detect();
-
-        LogEnvironment(screens, displayMode);
-
-        var layout = KioskLayoutPlanner.Plan(screens, displayMode, options);
-        foreach (string warning in layout.Warnings)
-            _logger.LogWarning("{Warning}", warning);
-
-        _logger.LogInformation("Fensterplan: {Count} Fenster.", layout.Windows.Count);
-        foreach (var plan in layout.Windows)
-            _logger.LogInformation("  {Plan}", plan);
+        var detector = new MonitorDetector(Program.LoggerFactory.CreateLogger<MonitorDetector>());
+        _windows = new KioskWindowManager(options, detector, Program.LoggerFactory);
 
         if (Program.DryRun)
         {
+            _windows.Plan();
             _logger.LogInformation("DryRun aktiv - es wird kein Fenster geoeffnet, der Kiosk beendet sich.");
 
             // Beides ist noetig, sonst faellt der Start mit "Cannot perform requested operation
@@ -80,34 +65,15 @@ public partial class App : Application
             // Schliessen des Probe-Fensters sofort herunterfaehrt, und der Post sorgt dafuer,
             // dass der eigentliche Shutdown erst aus der laufenden Hauptschleife heraus passiert.
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            probeWindow.Close();
+            _windows.CloseAll();
             Avalonia.Threading.Dispatcher.UIThread.Post(() => desktop.Shutdown());
             return;
         }
 
-        // Reihenfolge ist Absicht: das Bedienfenster steht im Plan zuletzt und wird deshalb
-        // zuletzt aktiviert - dort landet der Tastaturfokus fuer die Numpad-Eingabe.
-        for (int i = 0; i < layout.Windows.Count; i++)
-        {
-            var plan = layout.Windows[i];
-            var window = i == 0 ? probeWindow : new KioskWindow();
+        _windows.Start(desktop);
 
-            window.Configure(
-                plan, options.Display, options.Retry,
-                Program.LoggerFactory.CreateLogger($"Kiosk.{plan.Role}"));
-
-            _windows.Add(window);
-            window.Show();
-        }
-
-        // MainWindow bestimmt, wann die Anwendung beendet wird: das Bedienfenster schliessen
-        // beendet den Kiosk, das Schliessen des Spiegels allein nicht.
-        desktop.MainWindow = _windows[^1];
-        desktop.ShutdownMode = ShutdownMode.OnMainWindowClose;
         desktop.ShutdownRequested += OnShutdownRequested;
         desktop.Exit += OnExit;
-
-        _windows[^1].FocusWebContent();
     }
 
     /// <summary>
@@ -124,31 +90,18 @@ public partial class App : Application
         return null;
     }
 
-    private void LogEnvironment(IReadOnlyList<ScreenInfo> screens, DisplayModeInfo displayMode)
+    private void WarnAboutWayland()
     {
-        if (OperatingSystem.IsLinux()
-            && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+        if (!OperatingSystem.IsLinux()
+            || string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
         {
-            _logger.LogWarning(
-                "Wayland-Sitzung erkannt: der Compositor kann die Fensterposition ueberstimmen. " +
-                "Fuer verlaessliche Zuordnung auf zwei Bildschirme X11 verwenden " +
-                "(Raspberry Pi OS: raspi-config -> Advanced Options -> Wayland -> X11).");
-        }
-
-        _logger.LogInformation("Anzeigemodus: {Mode}", displayMode);
-
-        if (screens.Count == 0)
-        {
-            _logger.LogWarning("Avalonia meldet keine Bildschirme.");
             return;
         }
 
-        _logger.LogInformation("Erkannte Bildschirme ({Count}):", screens.Count);
-        foreach (var screen in screens)
-            _logger.LogInformation("  {Screen}", screen);
-
-        if (screens.Count < 2)
-            _logger.LogInformation("Kein sekundaerer Monitor gefunden.");
+        _logger.LogWarning(
+            "Wayland-Sitzung erkannt: der Compositor kann die Fensterposition ueberstimmen. " +
+            "Fuer verlaessliche Zuordnung auf zwei Bildschirme X11 verwenden " +
+            "(Raspberry Pi OS: raspi-config -> Advanced Options -> Wayland -> X11).");
     }
 
     private void OnShutdownRequested(object? sender, ShutdownRequestedEventArgs e)
