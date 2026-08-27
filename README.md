@@ -7,6 +7,10 @@ Erkennt beim Start die verfuegbaren Displays und oeffnet
 * **zwei** Fenster (Bedienfenster + Spiegel), wenn ein zweiter Bildschirm nutzbar ist,
 * **ein** Fenster mit der Primaer-URL, wenn nicht.
 
+Dazu eine [REST-Schnittstelle](#rest-schnittstelle) mit Swagger, ueber die sich der
+Rechner aus der Ferne neu starten, herunterfahren und zwischen *Bildschirme duplizieren*
+und *erweitern* umschalten laesst.
+
 ## Tech-Stack
 
 | Baustein | Version | Anmerkung |
@@ -22,8 +26,8 @@ WPE bzw. WebKitGTK unter Linux) — es wird kein Chromium mitgeliefert.
 
 ```
 src/StockTvKiosk.Core/    UI-freie Logik: Bildschirmerkennung, Fensterplanung, Konfiguration
-src/StockTvKiosk.App/     Avalonia-Anwendung: Fenster, WebView, Prozess-Management, Logging
-tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (33 Tests)
+src/StockTvKiosk.App/     Avalonia-Anwendung: Fenster, WebView, Prozess-Management, Logging, REST-API
+tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (69 Tests)
 ```
 
 Die gesamte Entscheidungslogik ("wie viele Fenster, auf welchem Bildschirm, mit welcher
@@ -123,6 +127,128 @@ seine echte Fehlermeldung hilft bei der Diagnose mehr als unsere Statusseite.
 > der IPv6-Versuch braucht rund 2 s, bevor auf `127.0.0.1` zurueckgefallen wird. Bei zu
 > kurzem Timeout meldet der Kiosk "Zeitueberschreitung", obwohl die Verbindung schlicht
 > abgelehnt wurde.
+
+## REST-Schnittstelle
+
+Der Kiosk bringt eine kleine HTTP-Schnittstelle mit, um den Rechner aus der Ferne neu zu
+starten, herunterzufahren und zwischen *Bildschirme duplizieren* und *erweitern*
+umzuschalten. Sie laeuft im selben Prozess wie die Fenster — anders ginge es nicht: das
+Neuanordnen der Fenster nach einem Moduswechsel muss ueber den UI-Thread laufen.
+
+Bedienoberflaeche: **`http://<geraet>:8099/swagger`**
+
+| Methode | Pfad | Zweck |
+|---|---|---|
+| `GET` | `/api/system/info` | Betriebssystem, Kiosk-Version, Bildschirme, offene Vormerkung |
+| `GET` | `/api/system/capabilities` | Was auf diesem Geraet tatsaechlich geht — und warum nicht |
+| `POST` | `/api/system/reboot` | Neustart, `{ "delaySeconds": 30, "force": false }` |
+| `POST` | `/api/system/shutdown` | Herunterfahren, gleicher Rumpf |
+| `POST` | `/api/system/cancel-shutdown` | Vormerkung zuruecknehmen |
+| `GET` | `/api/display/mode` | Anzeigemodus, Bildschirme, Fensteraufteilung |
+| `POST` | `/api/display/duplicate` | Auf *Duplizieren* umschalten |
+| `POST` | `/api/display/extend` | Auf *Erweitern* umschalten |
+| `POST` | `/api/kiosk/reload` | Blazor-Seiten neu laden |
+| `POST` | `/api/kiosk/relayout` | Nur die Fenster neu anordnen |
+
+```bash
+curl -H "X-Api-Key: $KEY" http://kiosk:8099/api/system/capabilities
+curl -X POST -H "X-Api-Key: $KEY" http://kiosk:8099/api/display/extend
+curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
+     -d '{"delaySeconds":60}' http://kiosk:8099/api/system/reboot
+```
+
+### Schluessel
+
+Sobald die Schnittstelle ueber Loopback hinaus erreichbar ist, ist ein Schluessel
+**Pflicht**. Fehlt er, startet sie gar nicht erst und schreibt den Grund ins Log — ohne
+diese Sperre koennte jeder im Netz den Rechner neu starten.
+
+Schluessel eintragen: bei stehendem Kiosk `KioskOptions > RestApi > ApiKey` in
+`_config/AppConfig.json` im Klartext hinterlegen. Beim naechsten Start wird der Wert
+verschluesselt zurueckgeschrieben (`"ApiKey": "enc:…"`) und ist danach nicht mehr im
+Klartext lesbar. Das ist Verschleierung gegen versehentliches Mitlesen, kein Schutz vor
+jemandem, der Datei **und** Programm hat.
+
+> Die Swagger-Oberflaeche bleibt ohne Schluessel erreichbar, damit sie sich ueberhaupt
+> oeffnen laesst — der Schluessel wird dort oben rechts unter *Authorize* eingetragen.
+> Jeder Aufruf aus der Oberflaeche geht wieder durch die Pruefung.
+
+Rein lokaler Betrieb ohne Schluessel geht auch: `BindAddress` auf `127.0.0.1`. Dann kommt
+nur heran, wer ohnehin schon am Geraet ist (oder einen SSH-Tunnel hat).
+
+### Einstellungen
+
+`KioskOptions > RestApi > Enabled` / `BindAddress` / `Port`
+: Standard `true`, `0.0.0.0`, `8099`. `BindAddress` akzeptiert auch `localhost` und `*`.
+
+`KioskOptions > Power > Mode`
+: `Auto` bildet auf das erkannte Betriebssystem ab, `CommandLine` verwendet
+  ausschliesslich `RebootCommand`/`ShutdownCommand`, `Disabled` sperrt beide Endpunkte
+  (sie antworten dann mit 403).
+
+`KioskOptions > DisplayControl > Mode`
+: Genauso fuer das Umschalten. Unter Linux/Wayland ist `CommandLine` der einzige Weg.
+
+`KioskOptions > DisplayControl > ReapplyLayoutAfterSwitch`
+: Standard `true` — nach dem Umschalten werden Bildschirme neu erkannt und die Fenster
+  nachgezogen. Ohne das haengt ein Vollbildfenster auf einem Bildschirm, den es so nicht
+  mehr gibt. `SettleDelayMilliseconds` (1500) ist die Pause davor: das Betriebssystem
+  meldet die neue Anordnung nicht sofort.
+
+`KioskOptions > Power > DefaultDelaySeconds` / `MaxDelaySeconds`
+: Die Verzoegerung wartet der Kiosk selbst ab, nicht `shutdown /t` — systemd kennt keine.
+  Bis zum Ablauf laesst sich die Aktion ueber `cancel-shutdown` zuruecknehmen. Ein
+  Neustart, der schon laeuft, ist dagegen nicht mehr aufzuhalten.
+
+### Was die Plattformen koennen
+
+| | Windows | Linux/X11 | Linux/Wayland |
+|---|---|---|---|
+| Neustart, Herunterfahren | `shutdown.exe` | `systemctl` | `systemctl` |
+| Duplizieren, Erweitern | CCD-API, Rueckfall `DisplaySwitch.exe` | `xrandr` | nur ueber eigenen Befehl |
+
+Erhoehte Rechte braucht nichts davon:
+
+* **Windows** — der interaktiv angemeldete Benutzer darf den eigenen Rechner
+  herunterfahren, und `SetDisplayConfig` ist genau das, was Win+P ausloest.
+* **Linux** — `systemctl reboot`/`poweroff` laeuft ueber logind; polkit erlaubt das der
+  aktiven lokalen Sitzung ueblicherweise ohne Passwort. Reicht es nicht (etwa ohne
+  Sitzung, per `enable-linger`), einen eigenen Befehl hinterlegen und dafuer eine
+  `sudo`-Regel anlegen:
+
+  ```
+  # /etc/sudoers.d/stocktv-kiosk  (visudo -f verwenden)
+  stocktv ALL=(root) NOPASSWD: /usr/sbin/shutdown
+  ```
+
+  ```json
+  "Power": { "Mode": "CommandLine",
+             "RebootCommand": "sudo", "RebootArguments": "/usr/sbin/shutdown -r now",
+             "ShutdownCommand": "sudo", "ShutdownArguments": "/usr/sbin/shutdown -h now" }
+  ```
+
+**Wayland** kann das Umschalten nicht: dort bestimmt der Compositor die
+Bildschirmanordnung, `xrandr` sieht bestenfalls die XWayland-Sicht. Der Endpunkt antwortet
+deshalb mit **501** und einem Hinweis, statt so zu tun, als haette er etwas getan. Ausweg:
+auf X11 umstellen (siehe [Linux](#linux)) oder `wlr-randr` installieren und als eigenen
+Befehl hinterlegen — die Platzhalter `{primary}`, `{secondary}` und `{direction}` werden
+vor dem Aufruf durch die Ausgangsnamen ersetzt.
+
+`GET /api/system/capabilities` beantwortet das alles fuer das laufende Geraet, damit
+niemand raten muss.
+
+### Firewall
+
+Die Installationsskripte unter `deploy/` geben den Port **nicht** frei — das braucht unter
+Windows Administratorrechte, und sonst verlangt dort nichts welche. Bei Bedarf von Hand:
+
+```powershell
+New-NetFirewallRule -DisplayName "StockTV-Kiosk API" -Direction Inbound -Protocol TCP -LocalPort 8099 -Action Allow
+```
+
+```bash
+sudo ufw allow 8099/tcp
+```
 
 ## Autostart
 
@@ -260,15 +386,28 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 16 | Linux | Units erzeugen | `systemd-analyze verify` ohne Beanstandung | ✅ verifiziert |
 | 17 | Linux | Installationsablauf | Units am richtigen Ort, `daemon-reload` vor `enable`, Deinstallation raeumt auf | ✅ verifiziert |
 | 18 | Pi 4 | Autostart real | Kiosk startet nach Reboot ohne Anmeldung von Hand | ⬜ offen |
+| 19 | Windows | `GET /api/system/capabilities` | meldet Windows/CCD, `canReboot` und `canSwitchDisplays` | ✅ verifiziert |
+| 20 | Windows | Aufruf ohne `X-Api-Key` | 401, Swagger-Oberflaeche bleibt erreichbar | ✅ verifiziert |
+| 21 | Windows | Reboot vormerken, zuruecknehmen | 202, `info` zeigt die Vormerkung, zweite ergibt 409, `cancel` 200 | ✅ verifiziert |
+| 22 | Windows | `POST /api/display/duplicate` → `extend` | Modus wechselt, Fenster werden nachgezogen | ⬜ offen |
+| 23 | Linux/X11 | dito ueber `xrandr` | wie #22 | ⬜ offen |
+| 24 | Linux/Wayland | `POST /api/display/extend` | 501 mit Hinweis auf X11 bzw. eigenen Befehl | ⬜ offen |
+| 25 | beide | Start ohne `ApiKey` bei `BindAddress = 0.0.0.0` | Schnittstelle startet nicht, Grund im Log | ⬜ offen |
 
-Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6 sowie die
-Anzeigemodus-Erkennung — 33 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
+Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6, die
+Anzeigemodus-Erkennung sowie die Befehlsermittlung fuer #19–#24 auf beiden Plattformen —
+69 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
 
 **Verifiziert am 26.08.2026** unter Windows 11 (10.0.26200, x64) mit zwei Monitoren
 (`2560x1440` primaer, `1920x1200` links davon bei X = −1920) gegen das laufende
 `StockTvBlazor` auf Port 5129. Die systemd-Units und Installationsskripte wurden in einem
 Debian-Bookworm-Container gegen systemd 252 geprueft — dieselbe Version wie auf
 Raspberry Pi OS Bookworm. **Nicht** geprueft ist der Lauf auf echter Pi-Hardware (#18).
+
+**REST-Schnittstelle verifiziert am 27.08.2026** auf demselben Geraet gegen den laufenden
+Kiosk (#19–#21). Das Umschalten selbst (#22–#24) ist noch offen: es aendert die
+Bildschirmanordnung des ganzen Rechners, gehoert also auf ein Testgeraet und nicht auf
+einen Arbeitsplatz.
 
 ## Logging
 

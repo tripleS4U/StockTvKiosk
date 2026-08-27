@@ -85,6 +85,24 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
   statt eines Ausfalls. Auf `false` nur, wenn der Kiosk StockTV selbst verwaltet oder kein
   Autostart eingerichtet ist (Details im README).
 
+## Geklärte Punkte (27.08.2026)
+
+- **REST-Schnittstelle:** Kestrel im selben Prozess wie die Fenster (das Neuanordnen nach
+  einem Moduswechsel muss über den UI-Thread laufen), Controller + Swashbuckle/Swagger unter
+  `/swagger`. Konfiguration unter `KioskOptions > RestApi`, `> Power`, `> DisplayControl`.
+- **Absicherung:** Standard ist `0.0.0.0:8099` mit `ApiKey` als Pflicht. Fehlt der Schlüssel
+  bei einer nicht-Loopback-Bindung, startet die Schnittstelle gar nicht erst — sonst ginge ein
+  Gerät mit offenem Neustart-Endpunkt ins Netz. Der Schlüssel liegt `[Secret]`-verschlüsselt
+  in `AppConfig.json`.
+- **Betriebssystem-Erkennung:** Windows `shutdown.exe` + CCD-API (`SetDisplayConfig`, Rückfall
+  `DisplaySwitch.exe`), Linux `systemctl` + `xrandr`. Nichts davon braucht erhöhte Rechte.
+  Jede Aktion lässt sich zusätzlich über `Mode = CommandLine` frei belegen; `Disabled` sperrt
+  die jeweilige Gruppe. Unter Wayland antwortet das Umschalten mit 501 statt so zu tun, als
+  hätte es gewirkt.
+- **Verzögerung bei Neustart/Shutdown:** wartet der Kiosk selbst ab, nicht `shutdown /t` —
+  systemd kennt keine. Dadurch verhalten sich beide Plattformen gleich und die Aktion lässt
+  sich über `cancel-shutdown` zurücknehmen.
+
 ## Offene Punkte / vom Nutzer zu klären
 
 - Ob es weitere Startseiten außer `turnier` und `bestof` gibt, die als Primär-URL vorkommen.
