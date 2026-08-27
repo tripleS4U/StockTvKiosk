@@ -3,8 +3,11 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.Logging;
+using StockTvKiosk.App.Api;
 using StockTvKiosk.App.Hosting;
 using StockTvKiosk.App.Services;
+using StockTvKiosk.Core.Configuration;
+using StockTvKiosk.Core.Control;
 using StockTvKiosk.Core.Display;
 
 namespace StockTvKiosk.App;
@@ -13,6 +16,7 @@ public partial class App : Application
 {
     private BlazorHostProcess? _blazorHost;
     private KioskWindowManager? _windows;
+    private KioskApiHost? _api;
     private ILogger _logger = null!;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
@@ -74,7 +78,27 @@ public partial class App : Application
 
         desktop.ShutdownRequested += OnShutdownRequested;
         desktop.Exit += OnExit;
+
+        StartApi(options, detector);
     }
+
+    /// <summary>
+    /// Startet die REST-Schnittstelle nebenher. Bewusst nicht abgewartet: die Fenster stehen
+    /// bereits, und ein Problem mit der Fernsteuerung darf die Anzeige nicht aufhalten.
+    /// </summary>
+    private void StartApi(KioskOptions options, IDisplayModeDetector detector)
+        => _ = Task.Run(async () =>
+        {
+            try
+            {
+                _api = await KioskApiHost.StartIfEnabledAsync(
+                    options, _windows!, detector, PlatformInfo.Detect(), Program.LoggerFactory);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Die REST-Schnittstelle konnte nicht gestartet werden.");
+            }
+        });
 
     /// <summary>
     /// Wurzeladresse der Blazor-Anwendung, gegen die auf Bereitschaft geprueft wird - also nur
@@ -109,6 +133,11 @@ public partial class App : Application
 
     private void OnExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        // Erst die Schnittstelle: sonst nimmt eine gerade laufende Anfrage noch Fenster
+        // oder den Blazor-Prozess in die Hand, die es dann schon nicht mehr gibt.
+        _api?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+        _api = null;
+
         _blazorHost?.Dispose();
         _blazorHost = null;
     }

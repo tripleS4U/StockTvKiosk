@@ -22,7 +22,7 @@ namespace StockTvKiosk.App.Services;
 /// Anwendung beendet sich, sobald es geschlossen wird - eine Neuanordnung wuerde den Kiosk
 /// also mitnehmen. Nebenbei bleibt so die geladene Blazor-Seite samt Eingabezustand stehen.
 /// </remarks>
-internal sealed class KioskWindowManager(
+public sealed class KioskWindowManager(
     KioskOptions options,
     IDisplayModeDetector detector,
     ILoggerFactory loggerFactory)

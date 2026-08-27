@@ -20,6 +20,12 @@
     <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.10" />
   </ItemGroup>
 
+  <ItemGroup Label="REST-Schnittstelle">
+    <!-- Swagger-UI liegt als eingebettete Ressource im Paket - laeuft damit auch auf einem
+         Pi ohne Internetzugang. -->
+    <PackageVersion Include="Swashbuckle.AspNetCore" Version="10.2.3" />
+  </ItemGroup>
+
   <ItemGroup Label="Tests">
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageVersion Include="xunit" Version="2.9.3" />
