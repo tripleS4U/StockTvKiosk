@@ -244,7 +244,7 @@ public sealed class MonitorDetector : IDisplayModeDetector
     // "HDMI-1 connected primary 1920x1080+0+0 (normal ...) 598mm x 336mm"
     // "HDMI-2 connected (normal ...)"  <- angeschlossen, aber NICHT aktiv (keine Geometrie)
     private static readonly Regex ConnectedLine =
-        new(@"^(?<name>\S+)\s+connected\b", RegexOptions.Compiled);
+        new(@"^(?<name>\S+)\s+connected\b(?<primary>\s+primary\b)?", RegexOptions.Compiled);
 
     private static readonly Regex Geometry =
         new(@"(?<w>\d+)x(?<h>\d+)\+(?<x>-?\d+)\+(?<y>-?\d+)", RegexOptions.Compiled);
@@ -253,7 +253,8 @@ public sealed class MonitorDetector : IDisplayModeDetector
     {
         var details = new List<string>();
         var active = new List<(string Name, int X, int Y)>();
-        int connected = 0;
+        var connectedOutputs = new List<string>();
+        string? primaryOutput = null;
 
         foreach (string rawLine in output.Split('\n'))
         {
@@ -262,8 +263,12 @@ public sealed class MonitorDetector : IDisplayModeDetector
             if (!match.Success)
                 continue;
 
-            connected++;
             string name = match.Groups["name"].Value;
+            connectedOutputs.Add(name);
+
+            if (match.Groups["primary"].Success)
+                primaryOutput = name;
+
             var geo = Geometry.Match(line);
 
             if (geo.Success)
@@ -282,7 +287,7 @@ public sealed class MonitorDetector : IDisplayModeDetector
             }
         }
 
-        details.Insert(0, $"Angeschlossen: {connected}, davon aktiv: {active.Count}");
+        details.Insert(0, $"Angeschlossen: {connectedOutputs.Count}, davon aktiv: {active.Count}");
         if (wayland)
             details.Insert(1, "Hinweis: Wayland-Sitzung - xrandr zeigt ggf. nur die XWayland-Sicht.");
 
@@ -303,7 +308,10 @@ public sealed class MonitorDetector : IDisplayModeDetector
             MonitorCount = active.Count,
             Mode = mode,
             Source = "xrandr",
-            Details = details
+            Details = details,
+            ConnectedOutputs = connectedOutputs,
+            ActiveOutputs = active.Select(a => a.Name).ToList(),
+            PrimaryOutput = primaryOutput
         };
     }
 

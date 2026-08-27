@@ -64,6 +64,20 @@ public sealed class DisplayModeInfo
     /// <summary>Rohdaten der Erkennung fuer das Log.</summary>
     public IReadOnlyList<string> Details { get; init; } = [];
 
+    /// <summary>
+    /// Angeschlossene Ausgaenge in der Reihenfolge der Plattform, z. B. "HDMI-1", "HDMI-2".
+    /// Enthaelt auch abgeschaltete Ausgaenge - genau die muessen beim Umschalten auf
+    /// "Erweitern" ja erst eingeschaltet werden. Nur unter Linux/xrandr gefuellt; unter
+    /// Windows laeuft das Umschalten ueber die CCD-API und braucht keine Namen.
+    /// </summary>
+    public IReadOnlyList<string> ConnectedOutputs { get; init; } = [];
+
+    /// <summary>Ausgaenge, die tatsaechlich ein Bild zeigen (Teilmenge von <see cref="ConnectedOutputs"/>).</summary>
+    public IReadOnlyList<string> ActiveOutputs { get; init; } = [];
+
+    /// <summary>Der als primaer markierte Ausgang, soweit die Plattform einen nennt.</summary>
+    public string? PrimaryOutput { get; init; }
+
     /// <summary>Wie die Erkennung durchgefuehrt wurde, z. B. "Windows CCD", "xrandr", "DRM sysfs".</summary>
     public string Source { get; init; } = "unbekannt";
 

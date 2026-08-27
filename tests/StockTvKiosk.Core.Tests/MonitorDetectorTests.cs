@@ -139,3 +139,61 @@ public class MonitorDetectorNativeTests
         }
     }
 }
+
+/// <summary>
+/// Die Ausgangsnamen aus xrandr sind die Grundlage fuer das Umschalten zwischen
+/// Duplizieren und Erweitern - xrandr spricht seine Ausgaenge namentlich an.
+/// </summary>
+public class MonitorDetectorOutputTests
+{
+    private const string ZweiterAusgangAus = """
+        Screen 0: minimum 320 x 200, current 1920 x 1080, maximum 16384 x 16384
+        HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis) 598mm x 336mm
+           1920x1080     60.00*+  50.00
+        HDMI-2 connected (normal left inverted right x axis y axis) 0mm x 0mm
+           1920x1080     60.00 +
+        DP-1 disconnected (normal left inverted right x axis y axis)
+        """;
+
+    [Fact]
+    public void AngeschlossenerAberAbgeschalteterAusgangZaehltMit()
+    {
+        var info = MonitorDetector.ParseXrandr(ZweiterAusgangAus);
+
+        // Genau dieser Ausgang muss beim Wechsel auf "Erweitern" eingeschaltet werden -
+        // ihn wegzulassen, weil er gerade kein Bild zeigt, macht das Umschalten unmoeglich.
+        Assert.Equal(["HDMI-1", "HDMI-2"], info.ConnectedOutputs);
+        Assert.Equal(["HDMI-1"], info.ActiveOutputs);
+    }
+
+    [Fact]
+    public void NichtAngeschlosseneAusgaengeBleibenDraussen()
+    {
+        var info = MonitorDetector.ParseXrandr(ZweiterAusgangAus);
+
+        Assert.DoesNotContain("DP-1", info.ConnectedOutputs);
+    }
+
+    [Fact]
+    public void DerAlsPrimaerMarkierteAusgangWirdErkannt()
+    {
+        var info = MonitorDetector.ParseXrandr(ZweiterAusgangAus);
+
+        Assert.Equal("HDMI-1", info.PrimaryOutput);
+    }
+
+    [Fact]
+    public void OhnePrimaerMarkierungBleibtDasFeldLeer()
+    {
+        string ohnePrimary = """
+            Screen 0: minimum 320 x 200, current 1920 x 1080, maximum 16384 x 16384
+            HDMI-1 connected 1920x1080+0+0 (normal left inverted right x axis y axis) 598mm x 336mm
+               1920x1080     60.00*+
+            """;
+
+        var info = MonitorDetector.ParseXrandr(ohnePrimary);
+
+        Assert.Null(info.PrimaryOutput);
+        Assert.Equal(["HDMI-1"], info.ConnectedOutputs);
+    }
+}
