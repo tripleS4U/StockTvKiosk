@@ -80,10 +80,18 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
      sticht auch `StopExistingInstance = true`: einen Dienst abzuschießen bringt nur den
      Dienstverwalter zum Neustart, und nötig wäre es nicht.
   2. Läuft ein Prozess gleichen Namens oder ist einer der Ports belegt (NetMQ 4747/4748 plus
-     der Port aus `ASPNETCORE_URLS`)? Dann entscheidet `StopExistingInstance`: `false`
-     (Standard seit 28.08.2026) lässt den Bestand in Ruhe, `true` räumt ab.
+     der HTTP-Port)? Dann entscheidet `StopExistingInstance`: `false` (Standard seit
+     28.08.2026) lässt den Bestand in Ruhe, `true` räumt ab — aber nur Prozesse, die aus
+     genau der Datei unter `ExecutablePath` gestartet wurden. Wer nur so *heißt* (zweite
+     Installation, Dienst) oder dessen Pfad sich nicht ermitteln lässt, bleibt unangetastet.
   3. Nach dem Abräumen bis zu 5 s auf die Portfreigabe warten. Bleibt ein Port belegt, hält
-     ihn ein **fremder** Prozess — den räumt der Kiosk nie ab und startet dann auch nicht.
+     ihn etwas, das der Kiosk nicht beenden darf — dann startet er auch nicht.
+
+- **Keine doppelten Angaben in der Konfiguration:** `ASPNETCORE_URLS`, `WorkingDirectory`
+  und der HTTP-Port in `Ports` werden abgeleitet (aus `Urls > PrimaryUrl` bzw. aus
+  `ExecutablePath`) und gehören nicht in die Datei. Ausdrücklich gesetzte Werte gewinnen
+  weiterhin. Zweimal gepflegt laufen sie auseinander, und beim Port heißt das: der Kiosk
+  lädt von einem Port, auf dem StockTV nicht lauscht.
 
 - **Autostart:** Umgesetzt für beide Plattformen unter `deploy/` — systemd-User-Units für Linux,
   Aufgabenplanung für Windows. Jeweils zwei getrennte Einheiten (StockTV und Anzeige), damit sich

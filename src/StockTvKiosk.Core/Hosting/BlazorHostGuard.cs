@@ -39,11 +39,15 @@ public sealed record HostStartVerdict(HostStartDecision Decision, string Reason)
 public static class BlazorHostGuard
 {
     /// <summary>
-    /// Ports, die frei sein muessen: die konfigurierten (Vorgabe 4747/4748) plus die aus
-    /// <c>ASPNETCORE_URLS</c>. Letztere gehoeren dazu, weil genau auf diesen Port der Kiosk
-    /// spaeter wartet - ist er von etwas anderem belegt, kommt StockTV dort nie hoch.
+    /// Ports, die frei sein muessen: die konfigurierten (Vorgabe 4747/4748) plus der
+    /// HTTP-Port. Letzterer gehoert dazu, weil genau auf ihn der Kiosk spaeter wartet - ist
+    /// er von etwas anderem belegt, kommt StockTV dort nie hoch.
     /// </summary>
-    public static IReadOnlyList<int> PortsToCheck(BlazorHostOptions options)
+    /// <param name="primaryAddress">
+    /// Die Adresse aus <c>Urls &gt; PrimaryUrl</c>. Sie ist die Quelle fuer den HTTP-Port;
+    /// nur wenn <c>ASPNETCORE_URLS</c> ausdruecklich gesetzt ist, gilt stattdessen das.
+    /// </param>
+    public static IReadOnlyList<int> PortsToCheck(BlazorHostOptions options, Uri? primaryAddress)
     {
         ArgumentNullException.ThrowIfNull(options);
 
@@ -55,7 +59,12 @@ public static class BlazorHostGuard
                 ports.Add(port);
         }
 
-        foreach (int port in ExtractPorts(options.Environment.GetValueOrDefault("ASPNETCORE_URLS")))
+        string? httpUrls = options.Environment.GetValueOrDefault("ASPNETCORE_URLS");
+        var httpPorts = string.IsNullOrWhiteSpace(httpUrls)
+            ? (primaryAddress is null ? [] : ExtractPorts(primaryAddress.GetLeftPart(UriPartial.Authority)))
+            : ExtractPorts(httpUrls);
+
+        foreach (int port in httpPorts)
         {
             if (!ports.Contains(port))
                 ports.Add(port);
@@ -94,6 +103,38 @@ public static class BlazorHostGuard
 
         return ports;
     }
+
+    /// <summary>
+    /// Ob ein laufender Prozess aus genau der konfigurierten Datei gestartet wurde.
+    /// </summary>
+    /// <remarks>
+    /// Der Prozessname allein reicht dafuer nicht: derselbe Name kann aus einer zweiten
+    /// Installation oder einem Dienst kommen, den der Kiosk nichts angeht. Ist der Pfad des
+    /// laufenden Prozesses nicht zu ermitteln - typisch bei einem Dienst unter einem anderen
+    /// Benutzer -, gilt er als fremd. Im Zweifel nicht anfassen.
+    /// </remarks>
+    public static bool IsSameExecutable(string? runningPath, string? configuredPath)
+    {
+        if (string.IsNullOrWhiteSpace(runningPath) || string.IsNullOrWhiteSpace(configuredPath))
+            return false;
+
+        try
+        {
+            return string.Equals(
+                Path.GetFullPath(runningPath.Trim()),
+                Path.GetFullPath(configuredPath.Trim()),
+                PathComparison);
+        }
+        catch (Exception)
+        {
+            // Unbrauchbarer Pfad (ungueltige Zeichen o. Ae.) - dann eben fremd.
+            return false;
+        }
+    }
+
+    /// <summary>Windows unterscheidet keine Gross- und Kleinschreibung in Pfaden, Linux schon.</summary>
+    private static StringComparison PathComparison
+        => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
     /// <summary>Fragt das Betriebssystem, welche der Ports gerade jemand abhoert.</summary>
     public static IReadOnlyList<int> FindListeningPorts(IReadOnlyList<int> ports)

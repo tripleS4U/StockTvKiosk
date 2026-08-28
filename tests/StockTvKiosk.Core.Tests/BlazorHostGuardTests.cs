@@ -70,16 +70,27 @@ public class BlazorHostGuardTests
         Assert.Equal(HostStartDecision.Skip, verdict.Decision);
     }
 
+    private static readonly Uri PrimaryAddress = new("http://localhost:5129");
+
     [Fact]
-    public void DerHttpPortKommtAusAspnetcoreUrlsDazu()
+    public void DerHttpPortKommtAusDerPrimaerUrlDazu()
     {
-        var options = new BlazorHostOptions();
+        var ports = BlazorHostGuard.PortsToCheck(new BlazorHostOptions(), PrimaryAddress);
 
-        var ports = BlazorHostGuard.PortsToCheck(options);
-
-        // 4747/4748 aus der Vorgabe, 5129 aus ASPNETCORE_URLS - auf genau den wartet der
+        // 4747/4748 aus der Vorgabe, 5129 aus der Primaer-URL - auf genau den wartet der
         // Kiosk spaeter, er gehoert also in die Pruefung.
         Assert.Equal([4747, 4748, 5129], ports);
+    }
+
+    [Fact]
+    public void EinGesetztesAspnetcoreUrlsSchlaegtDiePrimaerUrl()
+    {
+        // Wer den Schluessel ausdruecklich eintraegt, laesst StockTV woanders lauschen - dann
+        // ist dieser Port der richtige, nicht der aus der Primaer-URL.
+        var options = new BlazorHostOptions();
+        options.Environment["ASPNETCORE_URLS"] = "http://localhost:5200";
+
+        Assert.Equal([4747, 4748, 5200], BlazorHostGuard.PortsToCheck(options, PrimaryAddress));
     }
 
     [Fact]
@@ -87,16 +98,52 @@ public class BlazorHostGuardTests
     {
         var options = new BlazorHostOptions { Ports = [5129, 5129, 4747] };
 
-        Assert.Equal([5129, 4747], BlazorHostGuard.PortsToCheck(options));
+        Assert.Equal([5129, 4747], BlazorHostGuard.PortsToCheck(options, PrimaryAddress));
     }
 
     [Fact]
     public void UnsinnigePortnummernFliegenRaus()
     {
         var options = new BlazorHostOptions { Ports = [0, -1, 70000, 4747] };
-        options.Environment.Clear();
 
-        Assert.Equal([4747], BlazorHostGuard.PortsToCheck(options));
+        Assert.Equal([4747], BlazorHostGuard.PortsToCheck(options, primaryAddress: null));
+    }
+
+    [Fact]
+    public void DerselbePfadIstDieEigeneAnwendung()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "StockTV", "StockTvBlazor.exe");
+
+        Assert.True(BlazorHostGuard.IsSameExecutable(path, path));
+    }
+
+    [Fact]
+    public void UmwegeImPfadAendernNichts()
+    {
+        string direct = Path.Combine(Path.GetTempPath(), "StockTV", "StockTvBlazor.exe");
+        string detour = Path.Combine(Path.GetTempPath(), "StockTV", "unterordner", "..", "StockTvBlazor.exe");
+
+        Assert.True(BlazorHostGuard.IsSameExecutable(detour, direct));
+    }
+
+    [Fact]
+    public void EineZweiteInstallationIstFremd()
+    {
+        string ours = Path.Combine(Path.GetTempPath(), "StockTV", "StockTvBlazor.exe");
+        string theirs = Path.Combine(Path.GetTempPath(), "StockTV-alt", "StockTvBlazor.exe");
+
+        Assert.False(BlazorHostGuard.IsSameExecutable(theirs, ours));
+    }
+
+    [Fact]
+    public void OhneErmittelbarenPfadGiltDerProzessAlsFremd()
+    {
+        // Genau der Dienst-Fall: MainModule ist bei einem Prozess unter einem anderen
+        // Benutzer nicht lesbar. Im Zweifel nicht anfassen.
+        string ours = Path.Combine(Path.GetTempPath(), "StockTV", "StockTvBlazor.exe");
+
+        Assert.False(BlazorHostGuard.IsSameExecutable(null, ours));
+        Assert.False(BlazorHostGuard.IsSameExecutable("   ", ours));
     }
 
     [Theory]
@@ -109,7 +156,7 @@ public class BlazorHostGuardTests
     [InlineData("http://localhost", new[] { 80 })]
     [InlineData("", new int[0])]
     [InlineData("keine-url", new int[0])]
-    public void PortsAusAspnetcoreUrls(string urls, int[] expected)
+    public void PortsAusEinerUrlAngabe(string urls, int[] expected)
         => Assert.Equal(expected, BlazorHostGuard.ExtractPorts(urls));
 
     [Fact]

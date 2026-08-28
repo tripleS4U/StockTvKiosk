@@ -28,14 +28,22 @@ namespace StockTvKiosk.Core.Configuration
         [Description("Working directory")]
         public string? WorkingDirectory { get => _WorkingDirectory; set { if (!object.Equals(_WorkingDirectory, value)) { _WorkingDirectory = value; } } }
 
-        private Dictionary<string, string> _Environment = new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["ASPNETCORE_URLS"] = "http://localhost:5129",
-            // "Development" laesst Blazor die echte Exception zeigen statt nur
-            // "An unhandled error has occurred" - entspricht -DetailedErrors in start-compiled.ps1.
-            ["ASPNETCORE_ENVIRONMENT"] = "Production"
-        };
-        [Description("Environment variables")]
+        /// <summary>
+        /// Zusaetzliche Umgebungsvariablen fuer den StockTV-Prozess. Standardmaessig leer.
+        /// </summary>
+        /// <remarks>
+        /// <c>ASPNETCORE_URLS</c> steht hier bewusst nicht drin: der Wert wird aus
+        /// <c>KioskOptions &gt; Urls &gt; PrimaryUrl</c> abgeleitet. Zweimal dieselbe Adresse
+        /// zu pflegen geht irgendwann schief, und dann laedt der Kiosk von einem Port, auf dem
+        /// StockTV gar nicht lauscht. Wer doch etwas anderes braucht - mehrere Adressen, eine
+        /// andere Bindung -, traegt den Schluessel hier ein und gewinnt damit.
+        ///
+        /// <c>ASPNETCORE_ENVIRONMENT</c> fehlt aus demselben Grund: "Production" ist ohnehin
+        /// die Vorgabe von ASP.NET. Fuer die echten Fehlermeldungen statt "An unhandled error
+        /// has occurred" hier "Development" eintragen.
+        /// </remarks>
+        private Dictionary<string, string> _Environment = new Dictionary<string, string>(StringComparer.Ordinal);
+        [Description("Extra environment variables; ASPNETCORE_URLS is derived from Urls > PrimaryUrl unless set here")]
         public Dictionary<string, string> Environment { get => _Environment; set { if (!object.Equals(_Environment, value)) { _Environment = value; } } }
 
         /// <summary>

@@ -78,7 +78,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             return;
         }
 
-        if (!MayStart(executable, urlIsServing: false, cancellationToken))
+        if (!MayStart(executable, readinessProbe, cancellationToken))
             return;
 
         var startInfo = new ProcessStartInfo(executable.FullName)
@@ -96,8 +96,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         if (!string.IsNullOrWhiteSpace(options.Arguments))
             startInfo.Arguments = options.Arguments;
 
-        foreach (var (key, value) in options.Environment)
-            startInfo.Environment[key] = value;
+        ApplyEnvironment(startInfo, readinessProbe);
 
         string? logDirectory = ResolveLogDirectory(executable);
         if (logDirectory is not null)
@@ -133,6 +132,31 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         }
     }
 
+    private const string AspNetCoreUrls = "ASPNETCORE_URLS";
+
+    /// <summary>
+    /// Setzt die Umgebungsvariablen und leitet <c>ASPNETCORE_URLS</c> aus der Primaer-URL ab.
+    /// </summary>
+    /// <remarks>
+    /// Damit steht die Adresse nur an einer Stelle in der Konfiguration. Zweimal gepflegt
+    /// laufen die beiden Werte irgendwann auseinander, und dann laedt der Kiosk von einem
+    /// Port, auf dem StockTV nicht lauscht - mit einer Statusseite als einzigem Hinweis. Ein
+    /// ausdruecklich eingetragener Wert gewinnt weiterhin.
+    /// </remarks>
+    private void ApplyEnvironment(ProcessStartInfo startInfo, Uri? primaryAddress)
+    {
+        foreach (var (key, value) in options.Environment)
+            startInfo.Environment[key] = value;
+
+        if (primaryAddress is null || options.Environment.ContainsKey(AspNetCoreUrls))
+            return;
+
+        string urls = primaryAddress.GetLeftPart(UriPartial.Authority);
+        startInfo.Environment[AspNetCoreUrls] = urls;
+
+        logger.LogInformation("{Key} aus der Primaer-URL abgeleitet: {Urls}", AspNetCoreUrls, urls);
+    }
+
     /// <summary>
     /// Sieht nach, ob StockTV schon laeuft oder einer seiner Ports belegt ist, und
     /// entscheidet danach, ob ueberhaupt gestartet wird.
@@ -142,17 +166,17 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     /// daran zwangslaeufig. Blind zu starten hiesse ausserdem, eine laufende Wertung
     /// abzuraeumen - nur weil der Kiosk neu gestartet wurde.
     /// </remarks>
-    private bool MayStart(FileInfo executable, bool urlIsServing, CancellationToken cancellationToken)
+    private bool MayStart(FileInfo executable, Uri? primaryAddress, CancellationToken cancellationToken)
     {
         string processName = Path.GetFileNameWithoutExtension(executable.Name);
-        var ports = BlazorHostGuard.PortsToCheck(options);
+        var ports = BlazorHostGuard.PortsToCheck(options, primaryAddress);
 
         var running = FindRunningInstances(processName);
 
         try
         {
             var verdict = BlazorHostGuard.Decide(
-                urlIsServing, running.Count, BlazorHostGuard.FindListeningPorts(ports),
+                urlIsServing: false, running.Count, BlazorHostGuard.FindListeningPorts(ports),
                 options.StopExistingInstance);
 
             switch (verdict.Decision)
@@ -170,7 +194,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
                 default:
                     logger.LogWarning(
                         "{Reason} StopExistingInstance ist true - der Bestand wird abgeraeumt.", verdict.Reason);
-                    StopExistingInstances(running);
+                    StopOwnInstances(running, executable);
                     return PortsAreFreeAfterStopping(ports, cancellationToken);
             }
         }
@@ -199,8 +223,8 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             if (DateTime.UtcNow >= deadline)
             {
                 logger.LogError(
-                    "{Ports} auch nach dem Abraeumen noch belegt - offenbar von etwas anderem als " +
-                    "StockTV. Der Kiosk startet nichts und wartet auf die URL.",
+                    "{Ports} auch nach dem Abraeumen noch belegt - von einem Prozess, den der Kiosk " +
+                    "nicht beenden darf. Er startet nichts und wartet auf die URL.",
                     busy.Count == 1 ? $"Port {busy[0]} ist" : $"Die Ports {string.Join(", ", busy)} sind");
                 return false;
             }
@@ -377,11 +401,16 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     }
 
     /// <summary>
-    /// Beendet die gefundenen Instanzen. Nur erreichbar, wenn
-    /// <see cref="BlazorHostOptions.StopExistingInstance"/> das ausdruecklich erlaubt - der
-    /// Aufrufer entsorgt die uebergebenen Prozessobjekte.
+    /// Beendet die Instanzen, die aus der konfigurierten Datei gestartet wurden - und nur die.
     /// </summary>
-    private void StopExistingInstances(List<Process> running)
+    /// <remarks>
+    /// Nur erreichbar, wenn <see cref="BlazorHostOptions.StopExistingInstance"/> das
+    /// ausdruecklich erlaubt. Die Erlaubnis gilt aber der eigenen Anwendung, nicht jedem
+    /// Prozess, der zufaellig so heisst: eine zweite Installation oder ein Dienst kann
+    /// denselben Namen tragen und geht den Kiosk nichts an. Der Aufrufer entsorgt die
+    /// uebergebenen Prozessobjekte.
+    /// </remarks>
+    private void StopOwnInstances(List<Process> running, FileInfo executable)
     {
         foreach (var process in running)
         {
@@ -389,6 +418,17 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             {
                 if (process.HasExited)
                     continue;
+
+                string? path = TryGetExecutablePath(process);
+                if (!BlazorHostGuard.IsSameExecutable(path, executable.FullName))
+                {
+                    logger.LogInformation(
+                        "PID {Pid} heisst zwar {Name}, wurde aber nicht aus {Configured} gestartet " +
+                        "({Actual}) - bleibt unangetastet.",
+                        process.Id, process.ProcessName, executable.FullName,
+                        path ?? "Pfad nicht ermittelbar");
+                    continue;
+                }
 
                 logger.LogWarning(
                     "Beende bereits laufende StockTV-Instanz (PID {Pid}) wegen der belegten Ports.",
@@ -401,6 +441,17 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
                 logger.LogWarning(ex, "Instanz PID {Pid} konnte nicht beendet werden.", process.Id);
             }
         }
+    }
+
+    /// <summary>
+    /// Pfad der Programmdatei eines laufenden Prozesses, oder null. Fehlschlagen ist der
+    /// Normalfall bei fremden Prozessen - etwa einem Dienst unter einem anderen Benutzer -
+    /// und genau deshalb gelten die dann als fremd.
+    /// </summary>
+    private static string? TryGetExecutablePath(Process process)
+    {
+        try { return process.MainModule?.FileName; }
+        catch (Exception) { return null; }
     }
 
     private FileInfo? ResolveExecutable()

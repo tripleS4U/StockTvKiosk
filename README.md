@@ -27,7 +27,7 @@ WPE bzw. WebKitGTK unter Linux) — es wird kein Chromium mitgeliefert.
 ```
 src/StockTvKiosk.Core/    UI-freie Logik: Bildschirmerkennung, Fensterplanung, Konfiguration
 src/StockTvKiosk.App/     Avalonia-Anwendung: Fenster, WebView, Prozess-Management, Logging, REST-API
-tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (86 Tests)
+tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (91 Tests)
 ```
 
 Die gesamte Entscheidungslogik ("wie viele Fenster, auf welchem Bildschirm, mit welcher
@@ -129,21 +129,46 @@ warten wie immer auf die URL.
 
 `KioskOptions > BlazorHost > StopExistingInstance`
 : Greift nur, wenn die URL **nicht** antwortet, aber ein Prozess laeuft oder ein Port belegt
-  ist. `false` (Standard) laesst den Bestand in Ruhe und startet **nichts**. `true` raeumt
-  die gefundenen Prozesse ab und startet eine eigene Instanz.
+  ist. `false` (Standard) laesst den Bestand in Ruhe und startet **nichts**. `true` beendet
+  die eigenen Instanzen und startet eine neue.
+
+  „Eigene" heisst: aus genau der Datei gestartet, die unter `ExecutablePath` steht. Ein
+  Prozess, der nur so **heisst** — eine zweite Installation, ein Dienst —, bleibt
+  unangetastet; welcher Pfad stattdessen gefunden wurde, steht im Log. Laesst sich der Pfad
+  nicht ermitteln, was bei einem Dienst unter einem anderen Benutzer der Normalfall ist,
+  gilt der Prozess ebenfalls als fremd. Im Zweifel nicht anfassen.
 
   Der Standard ist bewusst `false`: waehrend eines Turniers die laufende Wertung
   abzuschiessen, nur weil der Kiosk neu gestartet wurde, ist der teurere Fehler. Ein
   blinder Start scheitert ohnehin — StockTV belegt NetMQ 4747/4748 und den HTTP-Port
   exklusiv.
 
-  Haelt ein **fremder** Prozess einen der Ports, wird auch mit `true` nicht gestartet: nach
-  dem Abraeumen wird bis zu 5 s auf die Freigabe gewartet, und bleibt der Port belegt,
-  gehoert er jemand anderem. Den abzuschiessen steht dem Kiosk nicht zu.
+  Bleibt danach ein Port belegt, haelt ihn etwas, das der Kiosk nicht beenden darf — dann
+  wird auch mit `true` nicht gestartet. Gewartet wird bis zu 5 s auf die Freigabe.
 
 `KioskOptions > BlazorHost > Ports`
-: Ports, die vor dem Start frei sein muessen; Vorgabe `[4747, 4748]`. Der Port aus
-  `ASPNETCORE_URLS` kommt automatisch dazu — auf genau den wartet der Kiosk anschliessend.
+: Ports, die vor dem Start frei sein muessen; Vorgabe `[4747, 4748]`. Der HTTP-Port kommt
+  automatisch dazu — auf genau den wartet der Kiosk anschliessend.
+
+#### Was nur einmal dasteht
+
+Drei Angaben werden abgeleitet und gehoeren deshalb **nicht** in die Datei:
+
+| Nicht eintragen | Kommt aus |
+|---|---|
+| `Environment > ASPNETCORE_URLS` | `Urls > PrimaryUrl` (nur Schema, Host und Port) |
+| `BlazorHost > WorkingDirectory` | dem Verzeichnis von `ExecutablePath` |
+| der HTTP-Port in `BlazorHost > Ports` | ebenfalls `Urls > PrimaryUrl` |
+
+Jede laesst sich weiterhin ausdruecklich setzen und gewinnt dann. Aber zweimal gepflegt
+laufen die Werte irgendwann auseinander, und im Fall der Adresse heisst das: der Kiosk
+laedt von einem Port, auf dem StockTV gar nicht lauscht — mit der Statusseite als einzigem
+Hinweis. Wer `ASPNETCORE_URLS` doch braucht, etwa fuer mehrere Adressen oder eine andere
+Bindung, traegt den Schluessel ein; die abgeleitete Angabe tritt dann zurueck.
+
+`ASPNETCORE_ENVIRONMENT` steht aus demselben Grund nicht mehr in den Vorgaben: `Production`
+ist ohnehin die Vorgabe von ASP.NET. Fuer die echten Fehlermeldungen statt „An unhandled
+error has occurred" hier `Development` eintragen.
 
 ## Verhalten bei nicht erreichbarer URL
 
@@ -432,10 +457,13 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 29 | Windows | nichts belegt, `LogDirectory` leer | StockTV startet ohne Konsolenfenster | ✅ verifiziert |
 | 30 | Windows | StockTV liefert unter der URL, `StopExistingInstance = true` | kein eigener Start, Bestand unangetastet | ✅ verifiziert |
 | 31 | Windows | nichts laeuft | Fenster erscheinen vor den Vorpruefungen, StockTV startet danach | ✅ verifiziert |
+| 32 | Windows | zweite Installation haelt 4747/4748, `StopExistingInstance = true` | fremder Prozess bleibt am Leben, Pfad im Log, kein Start | ✅ verifiziert |
+| 33 | Windows | `Environment` leer | `ASPNETCORE_URLS` aus `PrimaryUrl` abgeleitet, StockTV lauscht auf 5129 | ✅ verifiziert |
 
 Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6, die
 Anzeigemodus-Erkennung, die Befehlsermittlung fuer #19–#24 auf beiden Plattformen sowie
-die Startentscheidung aus #26–#28 und #30 — 86 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
+die Startentscheidung aus #26–#28, #30, #32 und #33 — 91 Unit-Tests in
+`tests/StockTvKiosk.Core.Tests`.
 
 **Verifiziert am 26.08.2026** unter Windows 11 (10.0.26200, x64) mit zwei Monitoren
 (`2560x1440` primaer, `1920x1200` links davon bei X = −1920) gegen das laufende
@@ -448,7 +476,7 @@ Kiosk (#19–#21). Das Umschalten selbst (#22–#24) ist noch offen: es aendert 
 Bildschirmanordnung des ganzen Rechners, gehoert also auf ein Testgeraet und nicht auf
 einen Arbeitsplatz.
 
-**Startentscheidung verifiziert am 28.08.2026** (#26–#31) gegen das echte
+**Startentscheidung verifiziert am 28.08.2026** (#26–#33) gegen das echte
 `StockTvBlazor`: mit einem Fremdprozess auf Port 4747 startet der Kiosk nichts — weder mit
 `StopExistingInstance = false` noch mit `true`, und der Fremdprozess ueberlebt beides. Mit
 einer echten Vorinstanz und `true` wird sie beendet und eine eigene gestartet. Liefert die
