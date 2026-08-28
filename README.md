@@ -339,6 +339,25 @@ New-NetFirewallRule -DisplayName "StockTV-Kiosk API" -Direction Inbound -Protoco
 sudo ufw allow 8099/tcp
 ```
 
+## Verteilpaket (Windows)
+
+Fuer den Rollout auf mehrere Geraete gibt es unter [`deploy/bundle/`](deploy/bundle/) ein
+Paket, das **StockTV und den Kiosk zusammen** enthaelt — gebaut auf dem
+Entwicklungsrechner, als Ganzes auf den Zielrechner kopiert, dort in einem Schritt
+installiert und geprueft:
+
+```powershell
+.\deploy\bundle\Publish-Bundle.ps1        # Entwicklungsrechner -> C:\StockTV
+.\Install-StockTV.ps1                     # Zielrechner
+.\Test-Installation.ps1                   # Zielrechner, veraendert nichts
+```
+
+Die Installation kann StockTV wahlweise als Windows-Dienst einrichten (`-Mode Service`,
+Vorgabe) oder dem Kiosk ueberlassen (`-Mode Managed`) und schreibt beide
+Konfigurationsdateien passend zueinander — die haeufigste stille Fehlerquelle ist sonst
+eine Portabweichung zwischen `Urls > PrimaryUrl` und dem Port, auf dem StockTV lauscht.
+Einzelheiten in [deploy/bundle/README.md](deploy/bundle/README.md).
+
 ## Autostart
 
 Auf beiden Plattformen gilt dasselbe Muster: **zwei getrennte Einheiten**, eine fuer
