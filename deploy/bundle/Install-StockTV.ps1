@@ -19,14 +19,51 @@
     Vorhandene Konfigurationsdateien werden NICHT ueberschrieben. Ein Update laesst damit
     Bahnnummer, Farben und den API-Schluessel stehen. Mit -ResetConfig ausdruecklich neu.
 
+    Installiert wird nach:
+        <InstallDir>\StockTvApps\StockTV\        StockTvBlazor + _config + _logs
+        <InstallDir>\StockTvApps\StockTvKiosk\   StockTvKiosk  + _config + _logs
+
 .EXAMPLE
     .\Install-StockTV.ps1
 
-.EXAMPLE
-    .\Install-StockTV.ps1 -Mode Managed -BahnNummer 3 -OpenFirewall
+    Erstinstallation mit den Vorgaben: StockTV als Windows-Dienst auf Port 8080 nach
+    C:\StockTV\StockTvApps\, Kiosk als geplanter Task. Braucht Administratorrechte.
 
 .EXAMPLE
     .\Install-StockTV.ps1 -WhatIfOnly
+
+    Zeigt nur, was geschehen wuerde - ohne irgendetwas zu veraendern.
+
+.EXAMPLE
+    .\Install-StockTV.ps1 -Mode Managed -BahnNummer 3
+
+    Ohne Administratorrechte: kein Dienst, der Kiosk startet StockTV selbst. Die Bahnnummer
+    wird in die StockTV-Konfiguration eingetragen.
+
+.EXAMPLE
+    .\Install-StockTV.ps1 -BahnNummer 5 -OpenFirewall
+
+    Wie die Erstinstallation, zusaetzlich mit eingehenden Firewall-Regeln fuer StockTV
+    (8080) und die Kiosk-Fernsteuerung (8099), damit Handys und Tablets im Netz
+    herankommen.
+
+.EXAMPLE
+    .\Install-StockTV.ps1 -Port 5129 -ApiKey "eigener-schluessel"
+
+    Abweichender HTTP-Port und ein selbst vergebener Schluessel statt eines erzeugten.
+
+.EXAMPLE
+    .\Install-StockTV.ps1 -ResetConfig
+
+    Update, das auch die Konfigurationsdateien auf die Vorlagen zuruecksetzt. Ohne diesen
+    Schalter bleiben sie unangetastet - dann behaelt das Geraet auch seinen bisherigen
+    API-Schluessel.
+
+.EXAMPLE
+    .\Install-StockTV.ps1 -InstallDir D:\StockTV -SkipWebView2
+
+    Anderes Zielverzeichnis, und die WebView2-Runtime wird nicht angefasst (etwa weil sie
+    ueber die Softwareverteilung kommt).
 #>
 [CmdletBinding()]
 param(
@@ -60,16 +97,19 @@ param(
     # Vorhandene Konfigurationsdateien durch die Vorlagen ersetzen.
     [switch]$ResetConfig,
 
+    # Die WebView2-Runtime nicht anfassen, auch wenn sie fehlt.
+    [switch]$SkipWebView2,
+
     [switch]$WhatIfOnly
 )
 
 $ErrorActionPreference = "Stop"
 
-# Beide Anwendungen liegen gleichrangig unter Apps. Nebeneinander direkt in InstallDir
+# Beide Anwendungen liegen gleichrangig unter StockTvApps. Nebeneinander direkt in InstallDir
 # ginge nicht: sie lesen ihre Konfiguration jeweils aus einem _config neben der
 # Programmdatei, und die Laufzeitdateien der beiden self-contained Builds wuerden sich
 # gegenseitig ueberschreiben.
-$AppsDir     = Join-Path $InstallDir "Apps"
+$AppsDir     = Join-Path $InstallDir "StockTvApps"
 $StockTvHome = Join-Path $AppsDir "StockTV"
 $KioskDir    = Join-Path $AppsDir "StockTvKiosk"
 
@@ -107,8 +147,8 @@ Write-Host "=========================================="
 
 Title "1. Verteilpaket und Rechte pruefen"
 
-$stockTvSource  = Join-Path $SourceDir "Apps\StockTV"
-$kioskSource    = Join-Path $SourceDir "Apps\StockTvKiosk"
+$stockTvSource  = Join-Path $SourceDir "StockTvApps\StockTV"
+$kioskSource    = Join-Path $SourceDir "StockTvApps\StockTvKiosk"
 $configSource   = Join-Path $SourceDir "config"
 $stockTvExe     = Join-Path $StockTvHome "StockTvBlazor.exe"
 $kioskExe       = Join-Path $KioskDir "StockTvKiosk.exe"
@@ -305,7 +345,7 @@ $kioskWritten = Install-ConfigFile -Template $kioskTemplate -Target $kioskConfig
         # Adresse - ASPNETCORE_URLS leitet der Kiosk davon ab.
         $text = $text.Replace('http://localhost:8080/', "http://localhost:$Port/")
         $text = $text.Replace('http://+:8080', "http://+:$Port")
-        $text = $text.Replace('"C:\\StockTV\\Apps\\StockTV\\StockTvBlazor.exe"',
+        $text = $text.Replace('"C:\\StockTV\\StockTvApps\\StockTV\\StockTvBlazor.exe"',
                               '"' + (ConvertTo-JsonValue $stockTvExe) + '"')
         $text = $text -replace '("RestApi"[\s\S]*?"Port"\s*:\s*)\d+', "`${1}$KioskApiPort"
         $text = $text.Replace('"ApiKey": ""', '"ApiKey": "' + (ConvertTo-JsonValue $ApiKey) + '"')
@@ -318,10 +358,74 @@ if (-not $kioskWritten -and $generatedKey) {
 }
 
 # ---------------------------------------------------------------------------------------
-# 5. Dienst
+# 5. WebView2-Runtime
 # ---------------------------------------------------------------------------------------
 
-Title "5. StockTV"
+Title "5. WebView2-Runtime"
+
+<#
+    Das Einzige, was die self-contained Builds nicht mitbringen: ein Windows-Systempaket,
+    kein .NET-Bestandteil. Fehlt es, startet der Kiosk und zeigt eine leere Flaeche - ohne
+    Fehlermeldung, ohne Absturz. Unter Windows 11 ist es vorinstalliert.
+#>
+function Get-WebView2Version {
+    $keys = @(
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+        "HKCU:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    )
+    return $keys |
+        ForEach-Object { (Get-ItemProperty $_ -Name pv -ErrorAction SilentlyContinue).pv } |
+        Where-Object { $_ -and $_ -ne "0.0.0.0" } | Select-Object -First 1
+}
+
+$webView2Version = Get-WebView2Version
+
+if ($webView2Version) {
+    Step "Vorhanden, Version $webView2Version."
+}
+elseif ($SkipWebView2) {
+    Warn "Fehlt, wird aber uebersprungen (-SkipWebView2). Der Kiosk zeigt ohne sie nichts an."
+}
+else {
+    $installer = Get-ChildItem (Join-Path $SourceDir "WebView2") -Filter *.exe -ErrorAction SilentlyContinue |
+                 Select-Object -First 1
+
+    if (-not $installer) {
+        Warn ("Fehlt, und im Paket liegt kein Installer (Ordner WebView2). Der Kiosk zeigt " +
+              "ohne sie nichts an. Nachholen: Evergreen Runtime von " +
+              "https://developer.microsoft.com/microsoft-edge/webview2 installieren, oder das " +
+              "Paket mit -WebView2 Standalone neu bauen.")
+    }
+    elseif ($WhatIfOnly) {
+        Step "wuerde $($installer.Name) still installieren"
+    }
+    else {
+        Step "Fehlt - installiere $($installer.Name) ..."
+
+        # Ohne erhoehte Rechte installiert WebView2 von sich aus benutzerbezogen. Das
+        # genuegt, solange der Kiosk unter demselben Benutzer laeuft - und genau das tut er,
+        # der geplante Task haengt an dessen Anmeldung.
+        $process = Start-Process -FilePath $installer.FullName `
+            -ArgumentList "/silent", "/install" -Wait -PassThru
+
+        $webView2Version = Get-WebView2Version
+
+        if ($webView2Version) {
+            Step "Installiert, Version $webView2Version."
+        }
+        else {
+            Warn ("Der Installer meldete Exitcode $($process.ExitCode), aber die Runtime ist " +
+                  "danach nicht auffindbar. Der Kiosk zeigt ohne sie nichts an.")
+        }
+    }
+}
+
+# ---------------------------------------------------------------------------------------
+# 6. Dienst
+# ---------------------------------------------------------------------------------------
+
+Title "6. StockTV"
 
 $service = Get-Service $ServiceName -ErrorAction SilentlyContinue
 
@@ -382,10 +486,10 @@ else {
 }
 
 # ---------------------------------------------------------------------------------------
-# 6. Kiosk-Autostart
+# 7. Kiosk-Autostart
 # ---------------------------------------------------------------------------------------
 
-Title "6. Kiosk-Autostart"
+Title "7. Kiosk-Autostart"
 
 if ($NoKiosk) {
     Step "Uebersprungen (-NoKiosk). Der Kiosk laesst sich von Hand starten: $kioskExe"
@@ -398,7 +502,17 @@ else {
     }
     elseif ($WhatIfOnly) {
         Step "wuerde den geplanten Task ueber Install-KioskTask.ps1 registrieren"
-        & $taskInstaller -KioskPath $kioskExe -WhatIfOnly
+
+        # Der Task-Installer prueft, ob die Programmdatei existiert - im Probelauf wurde aber
+        # noch nichts kopiert. Dann wird sein eigener Probelauf mit der Datei aus dem Paket
+        # gefuettert; er zeigt so dieselben Triggerdetails, ohne an der leeren Zieldatei zu
+        # scheitern.
+        $preview = if (Test-Path $kioskExe) { $kioskExe } else { Join-Path $kioskSource "StockTvKiosk.exe" }
+        & $taskInstaller -KioskPath $preview -WhatIfOnly
+
+        if ($preview -ne $kioskExe) {
+            Step "(der Task zeigt spaeter auf $kioskExe)"
+        }
     }
     else {
         # StockTV bekommt bewusst keinen eigenen Task: im Dienstbetrieb erledigt das der
@@ -409,10 +523,10 @@ else {
 }
 
 # ---------------------------------------------------------------------------------------
-# 7. Firewall
+# 8. Firewall
 # ---------------------------------------------------------------------------------------
 
-Title "7. Firewall"
+Title "8. Firewall"
 
 if (-not $OpenFirewall) {
     Step "Uebersprungen. Mit -OpenFirewall werden die Regeln angelegt (Administrator)."
@@ -432,10 +546,10 @@ else {
 }
 
 # ---------------------------------------------------------------------------------------
-# 8. Zusammenfassung
+# 9. Zusammenfassung
 # ---------------------------------------------------------------------------------------
 
-Title "8. Zusammenfassung"
+Title "9. Zusammenfassung"
 
 Write-Host ""
 Write-Host "  StockTV        $StockTvHome"

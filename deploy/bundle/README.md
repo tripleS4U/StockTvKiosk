@@ -6,7 +6,7 @@ gebaut, als Ganzes auf den Zielrechner kopiert und dort installiert.
 
 ```
 C:\StockTV-Install\          <- das Paket, auf den Zielrechner kopieren
-  Apps\
+  StockTvApps\
     StockTV\                 StockTvBlazor, self-contained
     StockTvKiosk\            StockTvKiosk, self-contained
   config\                    Konfigurationsvorlagen
@@ -16,7 +16,7 @@ C:\StockTV-Install\          <- das Paket, auf den Zielrechner kopieren
   VERSION.txt                woraus das Paket gebaut wurde
 
 C:\StockTV\                  <- die Installation
-  Apps\
+  StockTvApps\
     StockTV\                 + _config\stocktv.config.json, _logs\
     StockTvKiosk\            + _config\AppConfig.json, _logs\
 ```
@@ -40,10 +40,33 @@ sind — beim Kiosk waren das 552 MB von 604 MB.
 | Publish ohne Zielplattform | 604 MB |
 | self-contained `win-x64` | **135 MB**, alles flach im Ordner |
 
-Eine Abhaengigkeit deckt self-contained allerdings nicht ab: die **WebView2-Runtime**. Sie
-ist ein Windows-Systempaket, kein .NET-Bestandteil. Unter Windows 11 ist sie vorinstalliert,
-unter Windows 10 kann sie fehlen — dann startet der Kiosk, zeigt aber nichts an.
-`Test-Installation.ps1` prueft das ausdruecklich.
+### Die eine Ausnahme: WebView2
+
+Eine Abhaengigkeit deckt self-contained nicht ab — die **WebView2-Runtime**. Sie ist ein
+Windows-Systempaket, kein .NET-Bestandteil. Unter Windows 11 ist sie vorinstalliert, unter
+Windows 10 kann sie fehlen; dann startet der Kiosk und zeigt eine leere Flaeche, ohne
+Absturz und ohne Fehlermeldung.
+
+Das Paket bringt deshalb einen Installer mit, und `Install-StockTV.ps1` fuehrt ihn aus,
+wenn die Runtime fehlt:
+
+| `-WebView2` | im Paket | Zielrechner braucht Internet |
+|---|---|---|
+| `Bootstrapper` (Vorgabe) | ~2 MB | **ja**, beim Installieren |
+| `Standalone` | ~150 MB | nein |
+| `None` | — | — |
+
+Fuer Hallen ohne Netz also `-WebView2 Standalone`. Ohne Administratorrechte installiert
+WebView2 von sich aus benutzerbezogen — das genuegt, weil der Kiosk unter demselben
+Benutzer laeuft.
+
+Eine dritte Moeglichkeit waere die **Fixed Version**: WebView2 liegt dann im
+Anwendungsordner, ohne Installation und ohne Adminrechte. Sie ist hier bewusst nicht
+vorgesehen, denn sie bekommt **keine Sicherheitsupdates** — auf einem Geraet, das jahrelang
+in einer Halle steht und eine Weboberflaeche rendert, ist das der schlechtere Tausch. Die
+beiden Installer oben tragen die Runtime ins System ein, wo Edge sie selbst aktuell haelt.
+
+`Test-Installation.ps1` prueft ihr Vorhandensein ausdruecklich.
 
 ---
 
@@ -61,6 +84,7 @@ Versionsstempel dazu.
 | `-OutputRoot` | `C:\StockTV-Install` | Zielordner des Pakets |
 | `-Runtime` | `win-x64` | Zielplattform |
 | `-StockTvRepo` | Nachbarordner | Wurzel des StockTV-Repositorys |
+| `-WebView2` | `Bootstrapper` | welcher WebView2-Installer beiliegt, siehe oben |
 | `-SkipStockTv` / `-SkipKiosk` | | eine Seite stehen lassen |
 
 Fuer den Raspberry Pi spaeter:
@@ -117,7 +141,7 @@ wenn niemand Administratorrechte auf dem Geraet hat.
 | Parameter | Vorgabe | Bedeutung |
 |---|---|---|
 | `-Mode` | `Service` | siehe oben |
-| `-InstallDir` | `C:\StockTV` | beide Anwendungen landen darunter in `Apps\` |
+| `-InstallDir` | `C:\StockTV` | beide Anwendungen landen darunter in `StockTvApps\` |
 | `-Port` | `8080` | HTTP-Port von StockTV, wird in beide Konfigurationen eingesetzt |
 | `-KioskApiPort` | `8099` | Port der Kiosk-Fernsteuerung |
 | `-ApiKey` | *(erzeugt)* | Schluessel der Fernsteuerung |
@@ -125,6 +149,7 @@ wenn niemand Administratorrechte auf dem Geraet hat.
 | `-NoKiosk` | | Dateien kopieren, aber keinen Autostart einrichten |
 | `-OpenFirewall` | | eingehende Regeln fuer beide Ports (Administrator) |
 | `-ResetConfig` | | vorhandene Konfiguration durch die Vorlagen ersetzen |
+| `-SkipWebView2` | | die WebView2-Runtime nicht anfassen, auch wenn sie fehlt |
 | `-WhatIfOnly` | | nur anzeigen |
 
 > **Vorhandene Konfigurationsdateien werden nicht ueberschrieben.** Ein Update laesst

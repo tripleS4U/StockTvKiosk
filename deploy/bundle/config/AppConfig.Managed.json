@@ -43,7 +43,7 @@
       },
       "BlazorHost": {
         "Enabled": true,
-        "ExecutablePath": "C:\\StockTV\\Apps\\StockTV\\StockTvBlazor.exe",
+        "ExecutablePath": "C:\\StockTV\\StockTvApps\\StockTV\\StockTvBlazor.exe",
         "ExecutableName": "StockTvBlazor",
         "SearchRoot": null,
         "Arguments": null,

@@ -37,8 +37,25 @@
 .EXAMPLE
     .\Publish-Bundle.ps1
 
+    Baut beides fuer win-x64 nach C:\StockTV-Install und legt den WebView2-Bootstrapper
+    (~2 MB) dazu.
+
 .EXAMPLE
-    .\Publish-Bundle.ps1 -OutputRoot D:\Verteilung\StockTV -SkipStockTv
+    .\Publish-Bundle.ps1 -WebView2 Standalone
+
+    Mit dem vollstaendigen WebView2-Installer (~150 MB) statt des Bootstrappers - fuer
+    Zielrechner ohne Internetzugang.
+
+.EXAMPLE
+    .\Publish-Bundle.ps1 -SkipStockTv
+
+    Nur den Kiosk neu bauen; der StockTV-Stand im Paket bleibt, wie er ist.
+
+.EXAMPLE
+    .\Publish-Bundle.ps1 -Runtime linux-arm64 -OutputRoot C:\StockTV-Install-linux-arm64
+
+    Der spaetere Zweig fuer den Raspberry Pi. Bewusst ein eigenes Paket: zwei Plattformen
+    in einem Ordner hiessen, dass jeder Zielrechner den Ballast der anderen mitkopiert.
 #>
 [CmdletBinding()]
 param(
@@ -53,6 +70,19 @@ param(
 
     [ValidateSet("Release", "Debug")]
     [string]$Configuration = "Release",
+
+    <#
+        Die WebView2-Runtime ist das Einzige, was ein self-contained Build nicht mitbringt -
+        sie ist ein Windows-Systempaket, kein .NET-Bestandteil. Ohne sie startet der Kiosk,
+        zeigt aber nichts an.
+
+          Bootstrapper  ~2 MB im Paket, laedt beim Installieren nach. Braucht Internet auf
+                        dem ZIELrechner.
+          Standalone    ~150 MB im Paket, installiert ohne Internet. Fuer Hallen ohne Netz.
+          None          nichts mitliefern.
+    #>
+    [ValidateSet("Bootstrapper", "Standalone", "None")]
+    [string]$WebView2 = "Bootstrapper",
 
     [switch]$SkipStockTv,
 
@@ -80,7 +110,7 @@ foreach ($required in @($KioskProject, $StockTvProject)) {
     }
 }
 
-$AppsDir    = Join-Path $OutputRoot "Apps"
+$AppsDir    = Join-Path $OutputRoot "StockTvApps"
 $StockTvOut = Join-Path $AppsDir "StockTV"
 $KioskOut   = Join-Path $AppsDir "StockTvKiosk"
 
@@ -155,6 +185,58 @@ foreach ($script in @("Install-StockTV.ps1", "Test-Installation.ps1", "README.md
 # weitergereicht - so gibt es ihn weiterhin nur einmal im Repository.
 Copy-Item (Join-Path $KioskRepo "deploy\windows\Install-KioskTask.ps1")   $OutputRoot -Force
 Copy-Item (Join-Path $KioskRepo "deploy\windows\Uninstall-KioskTask.ps1") $OutputRoot -Force
+
+# ---------------------------------------------------------------------------------------
+# WebView2-Installer beilegen
+# ---------------------------------------------------------------------------------------
+
+$webView2Dir = Join-Path $OutputRoot "WebView2"
+$webView2File = $null
+
+if ($WebView2 -eq "None") {
+    Write-Host "WebView2: nichts beigelegt (-WebView2 None)." -ForegroundColor DarkGray
+}
+else {
+    # Kurzlinks von Microsoft, siehe developer.microsoft.com/microsoft-edge/webview2
+    $source = if ($WebView2 -eq "Standalone") {
+        @{ Url = "https://go.microsoft.com/fwlink/?linkid=2124701"
+           Name = "MicrosoftEdgeWebView2RuntimeInstallerX64.exe" }
+    } else {
+        @{ Url = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
+           Name = "MicrosoftEdgeWebview2Setup.exe" }
+    }
+
+    New-Item -ItemType Directory -Path $webView2Dir -Force | Out-Null
+    $webView2File = Join-Path $webView2Dir $source.Name
+
+    if (Test-Path $webView2File) {
+        Write-Host ("WebView2: {0} bereits im Paket ({1:N1} MB)." -f `
+            $source.Name, ((Get-Item $webView2File).Length / 1MB)) -ForegroundColor DarkGray
+    }
+    else {
+        Write-Host "WebView2: lade $($source.Name) ..." -ForegroundColor Cyan
+        try {
+            # Der Fortschrittsbalken macht Invoke-WebRequest um ein Vielfaches langsamer.
+            $previous = $ProgressPreference
+            $ProgressPreference = "SilentlyContinue"
+            Invoke-WebRequest -Uri $source.Url -OutFile $webView2File -UseBasicParsing
+            $ProgressPreference = $previous
+
+            Write-Host ("   {0:N1} MB" -f ((Get-Item $webView2File).Length / 1MB))
+        }
+        catch {
+            # Kein Grund, den ganzen Build scheitern zu lassen: das Paket ist ohne den
+            # Installer brauchbar, es fehlt nur die Bequemlichkeit auf dem Zielrechner.
+            Write-Warning ("WebView2-Installer konnte nicht geladen werden: {0}`n" +
+                           "Das Paket ist trotzdem vollstaendig; auf Zielrechnern ohne " +
+                           "WebView2-Runtime muss sie dann von Hand installiert werden." -f $_.Exception.Message)
+            Remove-Item $webView2File -Force -ErrorAction SilentlyContinue
+            $webView2File = $null
+        }
+    }
+}
+
+Write-Host ""
 
 # ---------------------------------------------------------------------------------------
 # Versionsstempel

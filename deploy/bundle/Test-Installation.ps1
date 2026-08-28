@@ -23,8 +23,25 @@
 .EXAMPLE
     .\Test-Installation.ps1
 
+    Prueft die Installation unter C:\StockTV. Die Fernsteuerung wird dabei nur auf
+    Erreichbarkeit geprueft, nicht auf den richtigen Schluessel.
+
 .EXAMPLE
-    .\Test-Installation.ps1 -ApiKey "abc..." -InstallDir D:\StockTV
+    .\Test-Installation.ps1 -ApiKey "abc..."
+
+    Zusaetzlich mit dem Schluessel: dann wird auch geprueft, ob die Fernsteuerung ihn
+    annimmt.
+
+.EXAMPLE
+    .\Test-Installation.ps1 -InstallDir D:\StockTV
+
+    Abweichendes Installationsverzeichnis. Die Anwendungen werden darunter in
+    StockTvApps\StockTV und StockTvApps\StockTvKiosk erwartet.
+
+.EXAMPLE
+    if (.\Test-Installation.ps1) { } else { "Installation in Ordnung" }
+
+    Der Exitcode ist die Zahl der Fehler - fuer den Einsatz in eigenen Skripten.
 #>
 [CmdletBinding()]
 param(
@@ -36,7 +53,7 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-$AppsDir     = Join-Path $InstallDir "Apps"
+$AppsDir     = Join-Path $InstallDir "StockTvApps"
 $StockTvHome = Join-Path $AppsDir "StockTV"
 $KioskDir    = Join-Path $AppsDir "StockTvKiosk"
 

@@ -348,7 +348,7 @@ installiert und geprueft:
 
 ```powershell
 .\deploy\bundle\Publish-Bundle.ps1        # Entwicklungsrechner -> C:\StockTV-Install
-.\Install-StockTV.ps1                     # Zielrechner -> C:\StockTV\Apps\
+.\Install-StockTV.ps1                     # Zielrechner -> C:\StockTV\StockTvApps\
 .\Test-Installation.ps1                   # Zielrechner, veraendert nichts
 ```
 
