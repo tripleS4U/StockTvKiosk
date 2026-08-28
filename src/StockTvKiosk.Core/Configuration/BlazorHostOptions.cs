@@ -38,9 +38,27 @@ namespace StockTvKiosk.Core.Configuration
         [Description("Environment variables")]
         public Dictionary<string, string> Environment { get => _Environment; set { if (!object.Equals(_Environment, value)) { _Environment = value; } } }
 
-        private bool _StopExistingInstance = true;
-        [Description("Stop existing instance")]
+        /// <summary>
+        /// Was geschieht, wenn beim Start bereits eine StockTV-Instanz laeuft oder einer der
+        /// Ports belegt ist: <c>false</c> (Vorgabe) laesst den Bestand in Ruhe und startet
+        /// nichts - der Kiosk wartet dann einfach auf die URL. <c>true</c> raeumt die
+        /// gefundenen Prozesse ab und startet eine eigene Instanz.
+        /// </summary>
+        /// <remarks>
+        /// Die Vorgabe ist bewusst <c>false</c>: waehrend eines Turniers eine laufende Wertung
+        /// abzuschiessen, weil der Kiosk neu gestartet wurde, waere der teurere Fehler.
+        /// </remarks>
+        private bool _StopExistingInstance = false;
+        [Description("Stop an already running instance instead of leaving it alone")]
         public bool StopExistingInstance { get => _StopExistingInstance; set { if (!object.Equals(_StopExistingInstance, value)) { _StopExistingInstance = value; } } }
+
+        /// <summary>
+        /// Ports, die vor dem Start frei sein muessen. Vorgabe sind die NetMQ-Ports, die
+        /// StockTV exklusiv belegt; der Port aus <c>ASPNETCORE_URLS</c> kommt automatisch dazu.
+        /// </summary>
+        private int[] _Ports = [4747, 4748];
+        [Description("TCP ports that must be free before starting; the port from ASPNETCORE_URLS is added automatically")]
+        public int[] Ports { get => _Ports; set { if (!object.Equals(_Ports, value)) { _Ports = value; } } }
 
         private int _ReadinessTimeoutSeconds = 60;
         [Description("Readiness timeout seconds")]

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using StockTvKiosk.Core.Configuration;
+using StockTvKiosk.Core.Hosting;
 
 namespace StockTvKiosk.App.Hosting;
 
@@ -45,15 +46,19 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             return;
         }
 
-        if (options.StopExistingInstance)
-            StopExistingInstances(executable);
+        if (!MayStart(executable))
+            return;
 
         var startInfo = new ProcessStartInfo(executable.FullName)
         {
             WorkingDirectory = string.IsNullOrWhiteSpace(options.WorkingDirectory)
                 ? executable.DirectoryName!
                 : options.WorkingDirectory,
-            UseShellExecute = false
+            UseShellExecute = false,
+
+            // Ohne das blitzt auf einem Kiosk-Bildschirm ein Konsolenfenster ueber der
+            // Anzeige auf und bleibt stehen, solange StockTV laeuft.
+            CreateNoWindow = true
         };
 
         if (!string.IsNullOrWhiteSpace(options.Arguments))
@@ -93,6 +98,94 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         catch (Exception ex)
         {
             logger.LogError(ex, "Start von StockTV fehlgeschlagen: {Path}", executable.FullName);
+        }
+    }
+
+    /// <summary>
+    /// Sieht nach, ob StockTV schon laeuft oder einer seiner Ports belegt ist, und
+    /// entscheidet danach, ob ueberhaupt gestartet wird.
+    /// </summary>
+    /// <remarks>
+    /// StockTV belegt NetMQ 4747/4748 und den HTTP-Port exklusiv; ein zweiter Start scheitert
+    /// daran zwangslaeufig. Blind zu starten hiesse ausserdem, eine laufende Wertung
+    /// abzuraeumen - nur weil der Kiosk neu gestartet wurde.
+    /// </remarks>
+    private bool MayStart(FileInfo executable)
+    {
+        string processName = Path.GetFileNameWithoutExtension(executable.Name);
+        var ports = BlazorHostGuard.PortsToCheck(options);
+
+        var running = FindRunningInstances(processName);
+
+        try
+        {
+            var verdict = BlazorHostGuard.Decide(
+                running.Count, BlazorHostGuard.FindListeningPorts(ports), options.StopExistingInstance);
+
+            switch (verdict.Decision)
+            {
+                case HostStartDecision.Start:
+                    return true;
+
+                case HostStartDecision.Skip:
+                    logger.LogInformation(
+                        "StockTV wird nicht gestartet: {Reason} Der Kiosk laesst den Bestand in Ruhe und " +
+                        "wartet auf die URL. Zum Uebernehmen KioskOptions > BlazorHost > StopExistingInstance " +
+                        "auf true setzen.", verdict.Reason);
+                    return false;
+
+                default:
+                    logger.LogWarning(
+                        "{Reason} StopExistingInstance ist true - der Bestand wird abgeraeumt.", verdict.Reason);
+                    StopExistingInstances(running);
+                    return PortsAreFreeAfterStopping(ports);
+            }
+        }
+        finally
+        {
+            foreach (var process in running)
+                process.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Wartet, bis die abgeraeumten Prozesse ihre Ports wieder freigegeben haben. Bleibt einer
+    /// belegt, haelt ihn etwas anderes als StockTV - dann ist ein Start aussichtslos, und den
+    /// fremden Halter abzuschiessen steht dem Kiosk nicht zu.
+    /// </summary>
+    private bool PortsAreFreeAfterStopping(IReadOnlyList<int> ports)
+    {
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+
+        while (true)
+        {
+            var busy = BlazorHostGuard.FindListeningPorts(ports);
+            if (busy.Count == 0)
+                return true;
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                logger.LogError(
+                    "{Ports} auch nach dem Abraeumen noch belegt - offenbar von etwas anderem als " +
+                    "StockTV. Der Kiosk startet nichts und wartet auf die URL.",
+                    busy.Count == 1 ? $"Port {busy[0]} ist" : $"Die Ports {string.Join(", ", busy)} sind");
+                return false;
+            }
+
+            Thread.Sleep(250);
+        }
+    }
+
+    private List<Process> FindRunningInstances(string processName)
+    {
+        try
+        {
+            return [.. Process.GetProcessesByName(processName)];
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Laufende StockTV-Instanzen konnten nicht ermittelt werden.");
+            return [];
         }
     }
 
@@ -209,37 +302,28 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     }
 
     /// <summary>
-    /// StockTV bindet NetMQ auf 4747/4748. Laeuft bereits eine Instanz, scheitert der Start
-    /// der zweiten an den belegten Ports - deshalb wird vorher aufgeraeumt.
+    /// Beendet die gefundenen Instanzen. Nur erreichbar, wenn
+    /// <see cref="BlazorHostOptions.StopExistingInstance"/> das ausdruecklich erlaubt - der
+    /// Aufrufer entsorgt die uebergebenen Prozessobjekte.
     /// </summary>
-    private void StopExistingInstances(FileInfo executable)
+    private void StopExistingInstances(List<Process> running)
     {
-        string processName = Path.GetFileNameWithoutExtension(executable.Name);
-
-        Process[] running;
-        try { running = Process.GetProcessesByName(processName); }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "Laufende StockTV-Instanzen konnten nicht ermittelt werden.");
-            return;
-        }
-
         foreach (var process in running)
         {
-            using (process)
+            try
             {
-                try
-                {
-                    logger.LogWarning(
-                        "Beende bereits laufende StockTV-Instanz (PID {Pid}) wegen der NetMQ-Ports 4747/4748.",
-                        process.Id);
-                    process.Kill(entireProcessTree: true);
-                    process.WaitForExit(5000);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogWarning(ex, "Instanz PID {Pid} konnte nicht beendet werden.", process.Id);
-                }
+                if (process.HasExited)
+                    continue;
+
+                logger.LogWarning(
+                    "Beende bereits laufende StockTV-Instanz (PID {Pid}) wegen der belegten Ports.",
+                    process.Id);
+                process.Kill(entireProcessTree: true);
+                process.WaitForExit(5000);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Instanz PID {Pid} konnte nicht beendet werden.", process.Id);
             }
         }
     }

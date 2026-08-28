@@ -27,7 +27,7 @@ WPE bzw. WebKitGTK unter Linux) — es wird kein Chromium mitgeliefert.
 ```
 src/StockTvKiosk.Core/    UI-freie Logik: Bildschirmerkennung, Fensterplanung, Konfiguration
 src/StockTvKiosk.App/     Avalonia-Anwendung: Fenster, WebView, Prozess-Management, Logging, REST-API
-tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (69 Tests)
+tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (84 Tests)
 ```
 
 Die gesamte Entscheidungslogik ("wie viele Fenster, auf welchem Bildschirm, mit welcher
@@ -109,8 +109,26 @@ weiterhin akzeptiert und beim naechsten Speichern durch den Namen ersetzt.
 
 `KioskOptions > BlazorHost > Enabled`
 : `false` (Standard): StockTV wird extern gestartet, der Kiosk wartet nur auf die URL.
-  `true`: der Kiosk startet `StockTvBlazor` selbst, beendet eine bereits laufende Instanz
-  (NetMQ belegt 4747/4748 exklusiv) und faehrt sie beim Schliessen mit herunter.
+  `true`: der Kiosk startet `StockTvBlazor` selbst und faehrt es beim Schliessen mit herunter.
+
+`KioskOptions > BlazorHost > StopExistingInstance`
+: Was geschieht, wenn beim Start bereits eine StockTV-Instanz laeuft oder einer der Ports
+  belegt ist. `false` (Standard) laesst den Bestand in Ruhe und startet **nichts** — der
+  Kiosk wartet dann einfach auf die URL. `true` raeumt die gefundenen Prozesse ab und
+  startet eine eigene Instanz.
+
+  Der Standard ist bewusst `false`: waehrend eines Turniers die laufende Wertung
+  abzuschiessen, nur weil der Kiosk neu gestartet wurde, ist der teurere Fehler. Ein
+  blinder Start scheitert ohnehin — StockTV belegt NetMQ 4747/4748 und den HTTP-Port
+  exklusiv.
+
+  Haelt ein **fremder** Prozess einen der Ports, wird auch mit `true` nicht gestartet: nach
+  dem Abraeumen wird bis zu 5 s auf die Freigabe gewartet, und bleibt der Port belegt,
+  gehoert er jemand anderem. Den abzuschiessen steht dem Kiosk nicht zu.
+
+`KioskOptions > BlazorHost > Ports`
+: Ports, die vor dem Start frei sein muessen; Vorgabe `[4747, 4748]`. Der Port aus
+  `ASPNETCORE_URLS` kommt automatisch dazu — auf genau den wartet der Kiosk anschliessend.
 
 ## Verhalten bei nicht erreichbarer URL
 
@@ -393,10 +411,14 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 23 | Linux/X11 | dito ueber `xrandr` | wie #22 | ⬜ offen |
 | 24 | Linux/Wayland | `POST /api/display/extend` | 501 mit Hinweis auf X11 bzw. eigenen Befehl | ⬜ offen |
 | 25 | beide | Start ohne `ApiKey` bei `BindAddress = 0.0.0.0` | Schnittstelle startet nicht, Grund im Log | ⬜ offen |
+| 26 | Windows | Port belegt, `StopExistingInstance = false` | StockTV wird nicht gestartet, Grund im Log | ✅ verifiziert |
+| 27 | Windows | Port von Fremdprozess belegt, `= true` | Fremdprozess bleibt am Leben, kein Start | ✅ verifiziert |
+| 28 | Windows | StockTV laeuft bereits, `= true` | alte Instanz beendet, eigene gestartet | ✅ verifiziert |
+| 29 | Windows | nichts belegt, `LogDirectory` leer | StockTV startet ohne Konsolenfenster | ✅ verifiziert |
 
 Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6, die
-Anzeigemodus-Erkennung sowie die Befehlsermittlung fuer #19–#24 auf beiden Plattformen —
-69 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
+Anzeigemodus-Erkennung, die Befehlsermittlung fuer #19–#24 auf beiden Plattformen sowie
+die Startentscheidung aus #26–#28 — 84 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
 
 **Verifiziert am 26.08.2026** unter Windows 11 (10.0.26200, x64) mit zwei Monitoren
 (`2560x1440` primaer, `1920x1200` links davon bei X = −1920) gegen das laufende
@@ -408,6 +430,12 @@ Raspberry Pi OS Bookworm. **Nicht** geprueft ist der Lauf auf echter Pi-Hardware
 Kiosk (#19–#21). Das Umschalten selbst (#22–#24) ist noch offen: es aendert die
 Bildschirmanordnung des ganzen Rechners, gehoert also auf ein Testgeraet und nicht auf
 einen Arbeitsplatz.
+
+**Startentscheidung verifiziert am 28.08.2026** (#26–#29) gegen das echte
+`StockTvBlazor`: mit einem Fremdprozess auf Port 4747 startet der Kiosk nichts — weder mit
+`StopExistingInstance = false` noch mit `true`, und der Fremdprozess ueberlebt beides. Mit
+einer echten Vorinstanz und `true` wird sie beendet und eine eigene gestartet. Der
+gestartete Prozess hat auch ohne Ausgabeumleitung kein Fenster (`MainWindowHandle = 0`).
 
 ## Logging
 
