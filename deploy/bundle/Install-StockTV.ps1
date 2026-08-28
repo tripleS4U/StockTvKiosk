@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Installiert StockTV und den StockTV-Kiosk auf einem Windows-Rechner.
 
@@ -65,7 +65,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$KioskDir = Join-Path $InstallDir "Kiosk"
+# Beide Anwendungen liegen gleichrangig unter Apps. Nebeneinander direkt in InstallDir
+# ginge nicht: sie lesen ihre Konfiguration jeweils aus einem _config neben der
+# Programmdatei, und die Laufzeitdateien der beiden self-contained Builds wuerden sich
+# gegenseitig ueberschreiben.
+$AppsDir     = Join-Path $InstallDir "Apps"
+$StockTvHome = Join-Path $AppsDir "StockTV"
+$KioskDir    = Join-Path $AppsDir "StockTvKiosk"
 
 $done     = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
@@ -101,12 +107,12 @@ Write-Host "=========================================="
 
 Title "1. Verteilpaket und Rechte pruefen"
 
-$stockTvSource  = Join-Path $SourceDir "win-x64\StockTV"
-$kioskSource    = Join-Path $SourceDir "win-x64\Kiosk"
+$stockTvSource  = Join-Path $SourceDir "Apps\StockTV"
+$kioskSource    = Join-Path $SourceDir "Apps\StockTvKiosk"
 $configSource   = Join-Path $SourceDir "config"
-$stockTvExe     = Join-Path $InstallDir "StockTvBlazor.exe"
+$stockTvExe     = Join-Path $StockTvHome "StockTvBlazor.exe"
 $kioskExe       = Join-Path $KioskDir "StockTvKiosk.exe"
-$stockTvConfig  = Join-Path $InstallDir "_config\stocktv.config.json"
+$stockTvConfig  = Join-Path $StockTvHome "_config\stocktv.config.json"
 $kioskConfig    = Join-Path $KioskDir "_config\AppConfig.json"
 $kioskTemplate  = Join-Path $configSource "AppConfig.$Mode.json"
 $stockTvTemplate = Join-Path $configSource "stocktv.config.json"
@@ -125,8 +131,8 @@ foreach ($required in @(
 Step "Paket vollstaendig."
 
 <#
-    Verteilpaket und Installation duerfen nicht derselbe Ordner sein. Sonst kopiert die
-    Installation die Anwendungen aus win-x64 in genau das Verzeichnis, das win-x64 enthaelt -
+    Verteilpaket und Installation duerfen nicht derselbe Ordner sein. Sonst kopierte die
+    Installation die Anwendungen aus Apps\ in genau das Verzeichnis, das Apps\ enthaelt -
     das laeuft zwar, laesst aber 250 MB doppelt liegen und macht spaeter niemandem klar,
     was davon die Installation ist und was das Paket.
 #>
@@ -138,10 +144,10 @@ if ($sourceFull -eq $installFull -or $sourceFull.StartsWith($installFull + '\', 
 Das Verteilpaket liegt in $sourceFull, installiert werden soll nach $installFull.
 Das waere dasselbe Verzeichnis (oder eines darunter).
 
-Das Paket gehoert daneben, nicht hinein - zum Beispiel:
-    Paket nach C:\StockTV-Setup kopieren und dort
+Das Paket gehoert daneben, nicht hinein - vorgesehen ist:
+    Paket nach C:\StockTV-Install kopieren und dort
     .\Install-StockTV.ps1
-laufen lassen; installiert wird dann wie gewohnt nach C:\StockTV.
+laufen lassen; installiert wird dann nach C:\StockTV.
 
 Alternativ mit -InstallDir ein anderes Zielverzeichnis angeben.
 "@
@@ -215,13 +221,13 @@ function Copy-Application {
         New-Item -ItemType Directory -Path (Join-Path $To $sub) -Force | Out-Null
     }
 
-    # Gezaehlt wird die Quelle, nicht das Ziel: unter InstallDir liegt auch der Kiosk, und
-    # dessen Dateien haetten in der Meldung fuer StockTV nichts zu suchen.
+    # Gezaehlt wird die Quelle: das Ziel enthaelt nach einem Update auch _config und _logs,
+    # die nicht aus diesem Kopiervorgang stammen.
     Step "$Label nach $To ($((Get-ChildItem $From -Recurse -File).Count) Dateien)."
 }
 
-Copy-Application $stockTvSource $InstallDir "StockTV"
-Copy-Application $kioskSource   $KioskDir   "StockTV-Kiosk"
+Copy-Application $stockTvSource $StockTvHome   "StockTV"
+Copy-Application $kioskSource   $KioskDir      "StockTV-Kiosk"
 
 # Der Task-Installer wird mitgenommen, damit sich der Autostart spaeter auch ohne das
 # vollstaendige Paket wieder einrichten laesst.
@@ -299,7 +305,8 @@ $kioskWritten = Install-ConfigFile -Template $kioskTemplate -Target $kioskConfig
         # Adresse - ASPNETCORE_URLS leitet der Kiosk davon ab.
         $text = $text.Replace('http://localhost:8080/', "http://localhost:$Port/")
         $text = $text.Replace('http://+:8080', "http://+:$Port")
-        $text = $text.Replace('"C:\\StockTV\\StockTvBlazor.exe"', '"' + (ConvertTo-JsonValue $stockTvExe) + '"')
+        $text = $text.Replace('"C:\\StockTV\\Apps\\StockTV\\StockTvBlazor.exe"',
+                              '"' + (ConvertTo-JsonValue $stockTvExe) + '"')
         $text = $text -replace '("RestApi"[\s\S]*?"Port"\s*:\s*)\d+', "`${1}$KioskApiPort"
         $text = $text.Replace('"ApiKey": ""', '"ApiKey": "' + (ConvertTo-JsonValue $ApiKey) + '"')
         return $text
@@ -431,7 +438,7 @@ else {
 Title "8. Zusammenfassung"
 
 Write-Host ""
-Write-Host "  StockTV        $InstallDir"
+Write-Host "  StockTV        $StockTvHome"
 Write-Host "  Kiosk          $KioskDir"
 Write-Host "  Bedienung      http://localhost:$Port/turnier"
 Write-Host "  Im Netz        http://$($env:COMPUTERNAME):$Port"
@@ -458,3 +465,4 @@ else {
     Write-Host "Fertig. Pruefen mit:  .\Test-Installation.ps1" -ForegroundColor Green
 }
 Write-Host ""
+

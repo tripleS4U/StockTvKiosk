@@ -42,7 +42,12 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$OutputRoot = "C:\StockTV",
+    [string]$OutputRoot = "C:\StockTV-Install",
+
+    # Zielplattform. Fuer den Raspberry Pi spaeter: -Runtime linux-arm64 zusammen mit einem
+    # eigenen -OutputRoot, damit sich die beiden Pakete nicht ins Gehege kommen.
+    [ValidateSet("win-x64", "linux-x64", "linux-arm64")]
+    [string]$Runtime = "win-x64",
 
     [string]$StockTvRepo,
 
@@ -75,15 +80,16 @@ foreach ($required in @($KioskProject, $StockTvProject)) {
     }
 }
 
-$RuntimeDir = Join-Path $OutputRoot "win-x64"
-$StockTvOut = Join-Path $RuntimeDir "StockTV"
-$KioskOut   = Join-Path $RuntimeDir "Kiosk"
+$AppsDir    = Join-Path $OutputRoot "Apps"
+$StockTvOut = Join-Path $AppsDir "StockTV"
+$KioskOut   = Join-Path $AppsDir "StockTvKiosk"
 
 Write-Host "=========================================="
 Write-Host "  StockTV-Verteilpaket"
-Write-Host "  Kiosk:   $KioskRepo"
-Write-Host "  StockTV: $StockTvRepo"
-Write-Host "  Ziel:    $OutputRoot"
+Write-Host "  Kiosk:    $KioskRepo"
+Write-Host "  StockTV:  $StockTvRepo"
+Write-Host "  Plattform: $Runtime"
+Write-Host "  Ziel:     $OutputRoot"
 Write-Host "=========================================="
 Write-Host ""
 
@@ -103,7 +109,7 @@ function Publish-One {
 
     & dotnet publish $Project `
         --configuration $Configuration `
-        --runtime win-x64 `
+        --runtime $Runtime `
         --self-contained true `
         --output $Output `
         -p:DebugType=none `

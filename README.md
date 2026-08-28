@@ -347,8 +347,8 @@ Entwicklungsrechner, als Ganzes auf den Zielrechner kopiert, dort in einem Schri
 installiert und geprueft:
 
 ```powershell
-.\deploy\bundle\Publish-Bundle.ps1        # Entwicklungsrechner -> C:\StockTV
-.\Install-StockTV.ps1                     # Zielrechner
+.\deploy\bundle\Publish-Bundle.ps1        # Entwicklungsrechner -> C:\StockTV-Install
+.\Install-StockTV.ps1                     # Zielrechner -> C:\StockTV\Apps\
 .\Test-Installation.ps1                   # Zielrechner, veraendert nichts
 ```
 

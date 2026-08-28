@@ -36,8 +36,11 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-$KioskDir = Join-Path $InstallDir "Kiosk"
-$results  = [System.Collections.Generic.List[object]]::new()
+$AppsDir     = Join-Path $InstallDir "Apps"
+$StockTvHome = Join-Path $AppsDir "StockTV"
+$KioskDir    = Join-Path $AppsDir "StockTvKiosk"
+
+$results = [System.Collections.Generic.List[object]]::new()
 
 function Add-Result {
     param(
@@ -76,7 +79,7 @@ Write-Host "=========================================="
 # Dateien
 # ---------------------------------------------------------------------------------------
 
-$stockTvExe = Join-Path $InstallDir "StockTvBlazor.exe"
+$stockTvExe = Join-Path $StockTvHome "StockTvBlazor.exe"
 $kioskExe   = Join-Path $KioskDir "StockTvKiosk.exe"
 
 foreach ($app in @(
@@ -93,11 +96,32 @@ foreach ($app in @(
     }
 }
 
+<#
+    Die WebView2-Runtime ist das Einzige, was ein self-contained Build nicht mitbringt: sie
+    ist ein Windows-Systempaket, kein .NET-Bestandteil. Unter Windows 11 ist sie da, unter
+    Windows 10 kann sie fehlen - dann startet der Kiosk, zeigt aber nur ein leeres Fenster.
+#>
+$webView2Keys = @(
+    "HKLM:\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+    "HKLM:\SOFTWARE\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+)
+$webView2 = $webView2Keys |
+    ForEach-Object { (Get-ItemProperty $_ -Name pv -ErrorAction SilentlyContinue).pv } |
+    Where-Object { $_ } | Select-Object -First 1
+
+if ($webView2) {
+    Add-Result "Dateien" "WebView2-Runtime" "OK" "Version $webView2"
+}
+else {
+    Add-Result "Dateien" "WebView2-Runtime" "FEHLER" `
+        "nicht gefunden - der Kiosk zeigt ohne sie nichts an (Evergreen Runtime von Microsoft installieren)"
+}
+
 # ---------------------------------------------------------------------------------------
 # Konfiguration
 # ---------------------------------------------------------------------------------------
 
-$stockTvConfigPath = Join-Path $InstallDir "_config\stocktv.config.json"
+$stockTvConfigPath = Join-Path $StockTvHome "_config\stocktv.config.json"
 $kioskConfigPath   = Join-Path $KioskDir "_config\AppConfig.json"
 
 $stockTvConfig = $null
