@@ -5,7 +5,11 @@ namespace StockTvKiosk.Core.Configuration
 
     public class UrlsOptions
     {
-        private string _PrimaryUrl = "http://localhost:5129/turnier";
+        /// <summary>
+        /// Bedienfenster. Die Wurzel statt einer bestimmten Seite: dort steht das Intro, von
+        /// dem aus bedient wird. Ein fester Seitenpfad wuerde die Auswahl ueberspringen.
+        /// </summary>
+        private string _PrimaryUrl = "http://localhost:5129/";
         [Description("Primary URL")]
         public string PrimaryUrl { get => _PrimaryUrl; set { if (!object.Equals(_PrimaryUrl, value)) { _PrimaryUrl = value; } } }
 

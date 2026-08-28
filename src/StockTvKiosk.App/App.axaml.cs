@@ -102,8 +102,9 @@ public partial class App : Application
 
     /// <summary>
     /// Wurzeladresse der Blazor-Anwendung, gegen die auf Bereitschaft geprueft wird - also nur
-    /// Schema, Host und Port der Primaer-URL. Der Seitenpfad taugt dafuer nicht: /turnier koennte
-    /// 404 liefern, obwohl der Server laeuft.
+    /// Schema, Host und Port der Primaer-URL. Ein Seitenpfad taugt dafuer nicht: er koennte
+    /// 404 liefern, obwohl der Server laeuft. Dass die Primaer-URL inzwischen ohnehin meist
+    /// die Wurzel ist, aendert daran nichts - konfigurierbar bleibt sie.
     /// </summary>
     private Uri? ReadinessProbe(string primaryUrl)
     {

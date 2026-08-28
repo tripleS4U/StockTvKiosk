@@ -65,8 +65,13 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 ## Geklärte Punkte (26.08.2026)
 
 - **URLs:** Die Blazor-App ist StockTV (`StockTvBlazor.exe`) auf `http://localhost:5129`.
-  Primär `/turnier` (Bedienfenster, Numpad-Eingabe), sekundär `/display2` (Spiegel).
-  Beides in `_config/AppConfig.json` unter `KioskOptions > Urls`.
+  Primär die Wurzel `/` (Bedienfenster; dort steht das Intro, von dem aus bedient wird),
+  sekundär `/display2` (Spiegel). Beides in `_config/AppConfig.json` unter
+  `KioskOptions > Urls`.
+
+  *Geändert am 28.08.2026:* primär war zuvor `/turnier`. Ein fester Seitenpfad überspringt
+  das Intro und damit die Auswahl. Im Verteilpaket (`deploy/bundle/config/`) steht
+  derselbe Wert.
 - **Verbindungsabbruch:** Lokale, eingebettete Statusseite + Auto-Retry alle 5 s, automatischer
   Reload, sobald der Server antwortet. Konfigurierbar unter `KioskOptions > Retry`.
 - **Wayland:** X11 ist die primäre Linux-Zielplattform. Wayland läuft, aber die
@@ -130,3 +135,5 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 ## Offene Punkte / vom Nutzer zu klären
 
 - Ob es weitere Startseiten außer `turnier` und `bestof` gibt, die als Primär-URL vorkommen.
+  Seit dem 28.08.2026 startet das Bedienfenster ohnehin auf der Wurzel; die Frage betrifft
+  nur noch Installationen, die bewusst direkt auf eine Seite gehen sollen.
