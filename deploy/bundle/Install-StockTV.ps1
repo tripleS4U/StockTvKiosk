@@ -553,7 +553,7 @@ Title "9. Zusammenfassung"
 Write-Host ""
 Write-Host "  StockTV        $StockTvHome"
 Write-Host "  Kiosk          $KioskDir"
-Write-Host "  Bedienung      http://localhost:$Port/turnier"
+Write-Host "  Bedienung      http://localhost:$Port/"
 Write-Host "  Im Netz        http://$($env:COMPUTERNAME):$Port"
 Write-Host "  Fernsteuerung  http://$($env:COMPUTERNAME):$KioskApiPort/swagger"
 

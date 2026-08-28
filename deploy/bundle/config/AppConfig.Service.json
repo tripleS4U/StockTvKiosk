@@ -19,7 +19,7 @@
     "description": "Kiosk configuration",
     "value": {
       "Urls": {
-        "PrimaryUrl": "http://localhost:8080/turnier",
+        "PrimaryUrl": "http://localhost:8080/",
         "SecondaryUrl": "http://localhost:8080/display2",
         "Demo": false
       },

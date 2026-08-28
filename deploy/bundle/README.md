@@ -191,7 +191,7 @@ Kiosk-Konfiguration.
 
 | | |
 |---|---|
-| Bedienung | `http://localhost:8080/turnier` |
+| Bedienfenster (Intro) | `http://localhost:8080/` |
 | Zweite Anzeige | `http://localhost:8080/display2` |
 | Aus dem Netz | `http://<rechnername>:8080` |
 | Fernsteuerung des Kiosks | `http://<rechnername>:8099/swagger` |
