@@ -27,7 +27,7 @@ WPE bzw. WebKitGTK unter Linux) — es wird kein Chromium mitgeliefert.
 ```
 src/StockTvKiosk.Core/    UI-freie Logik: Bildschirmerkennung, Fensterplanung, Konfiguration
 src/StockTvKiosk.App/     Avalonia-Anwendung: Fenster, WebView, Prozess-Management, Logging, REST-API
-tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (84 Tests)
+tests/StockTvKiosk.Core.Tests/  Unit-Tests der Entscheidungslogik (86 Tests)
 ```
 
 Die gesamte Entscheidungslogik ("wie viele Fenster, auf welchem Bildschirm, mit welcher
@@ -111,11 +111,26 @@ weiterhin akzeptiert und beim naechsten Speichern durch den Namen ersetzt.
 : `false` (Standard): StockTV wird extern gestartet, der Kiosk wartet nur auf die URL.
   `true`: der Kiosk startet `StockTvBlazor` selbst und faehrt es beim Schliessen mit herunter.
 
+Mit `Enabled = true` sieht der Kiosk vor dem Start in drei Stufen nach, ob ein Start
+ueberhaupt sinnvoll ist. Das geschieht im Hintergrund — die Fenster erscheinen sofort und
+warten wie immer auf die URL.
+
+`KioskOptions > BlazorHost > UrlProbeTimeoutSeconds`
+: **Die massgebliche Pruefung.** Antwortet die Primaer-URL, laeuft StockTV bereits — gleich
+  ob von Hand gestartet, per Autostart oder **als Dienst installiert**. Dann startet der
+  Kiosk keine eigene Instanz. Jede HTTP-Antwort zaehlt, auch 404 oder 500: der Server steht
+  dann. `0` schaltet die Pruefung ab.
+
+  Das sticht auch `StopExistingInstance = true`: laeuft StockTV als Dienst, brachte ein
+  Abschuss nur den Dienstverwalter zum Neustart — ein Wettlauf, den niemand gewinnt. Und
+  noetig waere er nicht, die Adresse liefert ja bereits.
+
+  Nicht unter 5 s setzen, aus demselben Grund wie bei `Retry > ProbeTimeoutSeconds`.
+
 `KioskOptions > BlazorHost > StopExistingInstance`
-: Was geschieht, wenn beim Start bereits eine StockTV-Instanz laeuft oder einer der Ports
-  belegt ist. `false` (Standard) laesst den Bestand in Ruhe und startet **nichts** — der
-  Kiosk wartet dann einfach auf die URL. `true` raeumt die gefundenen Prozesse ab und
-  startet eine eigene Instanz.
+: Greift nur, wenn die URL **nicht** antwortet, aber ein Prozess laeuft oder ein Port belegt
+  ist. `false` (Standard) laesst den Bestand in Ruhe und startet **nichts**. `true` raeumt
+  die gefundenen Prozesse ab und startet eine eigene Instanz.
 
   Der Standard ist bewusst `false`: waehrend eines Turniers die laufende Wertung
   abzuschiessen, nur weil der Kiosk neu gestartet wurde, ist der teurere Fehler. Ein
@@ -415,10 +430,12 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 27 | Windows | Port von Fremdprozess belegt, `= true` | Fremdprozess bleibt am Leben, kein Start | ✅ verifiziert |
 | 28 | Windows | StockTV laeuft bereits, `= true` | alte Instanz beendet, eigene gestartet | ✅ verifiziert |
 | 29 | Windows | nichts belegt, `LogDirectory` leer | StockTV startet ohne Konsolenfenster | ✅ verifiziert |
+| 30 | Windows | StockTV liefert unter der URL, `StopExistingInstance = true` | kein eigener Start, Bestand unangetastet | ✅ verifiziert |
+| 31 | Windows | nichts laeuft | Fenster erscheinen vor den Vorpruefungen, StockTV startet danach | ✅ verifiziert |
 
 Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6, die
 Anzeigemodus-Erkennung, die Befehlsermittlung fuer #19–#24 auf beiden Plattformen sowie
-die Startentscheidung aus #26–#28 — 84 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
+die Startentscheidung aus #26–#28 und #30 — 86 Unit-Tests in `tests/StockTvKiosk.Core.Tests`.
 
 **Verifiziert am 26.08.2026** unter Windows 11 (10.0.26200, x64) mit zwei Monitoren
 (`2560x1440` primaer, `1920x1200` links davon bei X = −1920) gegen das laufende
@@ -431,11 +448,14 @@ Kiosk (#19–#21). Das Umschalten selbst (#22–#24) ist noch offen: es aendert 
 Bildschirmanordnung des ganzen Rechners, gehoert also auf ein Testgeraet und nicht auf
 einen Arbeitsplatz.
 
-**Startentscheidung verifiziert am 28.08.2026** (#26–#29) gegen das echte
+**Startentscheidung verifiziert am 28.08.2026** (#26–#31) gegen das echte
 `StockTvBlazor`: mit einem Fremdprozess auf Port 4747 startet der Kiosk nichts — weder mit
 `StopExistingInstance = false` noch mit `true`, und der Fremdprozess ueberlebt beides. Mit
-einer echten Vorinstanz und `true` wird sie beendet und eine eigene gestartet. Der
-gestartete Prozess hat auch ohne Ausgabeumleitung kein Fenster (`MainWindowHandle = 0`).
+einer echten Vorinstanz und `true` wird sie beendet und eine eigene gestartet. Liefert die
+URL bereits (der Dienst-Fall), bleibt die Vorinstanz auch mit `true` unangetastet. Der
+gestartete Prozess hat auch ohne Ausgabeumleitung kein Fenster (`MainWindowHandle = 0`),
+und die Fenster erscheinen rund 3 s vor dem Start von StockTV — die Vorpruefungen halten
+die Anzeige also nicht auf.
 
 ## Logging
 

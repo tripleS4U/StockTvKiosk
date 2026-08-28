@@ -13,7 +13,7 @@ public class BlazorHostGuardTests
     [Fact]
     public void NichtsLaeuft_AlsoStarten()
     {
-        var verdict = BlazorHostGuard.Decide(runningProcesses: 0, busyPorts: [], mayStopExisting: false);
+        var verdict = BlazorHostGuard.Decide(urlIsServing: false, runningProcesses: 0, busyPorts: [], mayStopExisting: false);
 
         Assert.Equal(HostStartDecision.Start, verdict.Decision);
     }
@@ -21,7 +21,7 @@ public class BlazorHostGuardTests
     [Fact]
     public void LaufenderProzess_OhneErlaubnisNichtStarten()
     {
-        var verdict = BlazorHostGuard.Decide(runningProcesses: 1, busyPorts: [], mayStopExisting: false);
+        var verdict = BlazorHostGuard.Decide(urlIsServing: false, runningProcesses: 1, busyPorts: [], mayStopExisting: false);
 
         Assert.Equal(HostStartDecision.Skip, verdict.Decision);
         Assert.Contains("laeuft bereits", verdict.Reason, StringComparison.Ordinal);
@@ -32,7 +32,7 @@ public class BlazorHostGuardTests
     {
         // StockTV laeuft nicht, aber etwas anderes haelt den Port. Ein Start scheitert daran
         // ohnehin - er wuerde nur eine irrefuehrende Fehlermeldung erzeugen.
-        var verdict = BlazorHostGuard.Decide(runningProcesses: 0, busyPorts: [4747], mayStopExisting: false);
+        var verdict = BlazorHostGuard.Decide(urlIsServing: false, runningProcesses: 0, busyPorts: [4747], mayStopExisting: false);
 
         Assert.Equal(HostStartDecision.Skip, verdict.Decision);
         Assert.Contains("Port 4747", verdict.Reason, StringComparison.Ordinal);
@@ -41,11 +41,33 @@ public class BlazorHostGuardTests
     [Fact]
     public void MitErlaubnis_ErstAbraeumenDannStarten()
     {
-        var verdict = BlazorHostGuard.Decide(runningProcesses: 2, busyPorts: [4747, 5129], mayStopExisting: true);
+        var verdict = BlazorHostGuard.Decide(urlIsServing: false, runningProcesses: 2, busyPorts: [4747, 5129], mayStopExisting: true);
 
         Assert.Equal(HostStartDecision.StopThenStart, verdict.Decision);
         Assert.Contains("2 StockTV-Instanzen", verdict.Reason, StringComparison.Ordinal);
         Assert.Contains("4747, 5129", verdict.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AntwortendeAdresse_KeinEigenerStart()
+    {
+        var verdict = BlazorHostGuard.Decide(
+            urlIsServing: true, runningProcesses: 0, busyPorts: [], mayStopExisting: false);
+
+        Assert.Equal(HostStartDecision.Skip, verdict.Decision);
+        Assert.Contains("antwortet bereits", verdict.Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AntwortendeAdresse_SchlaegtAuchStopExistingInstance()
+    {
+        // Der Fall "StockTV als Dienst installiert": die Ports sind belegt, ein Prozess
+        // laeuft, und die Adresse liefert. Abraeumen wuerde hier nur den Dienstverwalter zum
+        // Neustart bringen - und noetig ist es nicht, es funktioniert ja alles.
+        var verdict = BlazorHostGuard.Decide(
+            urlIsServing: true, runningProcesses: 1, busyPorts: [4747, 4748, 5129], mayStopExisting: true);
+
+        Assert.Equal(HostStartDecision.Skip, verdict.Decision);
     }
 
     [Fact]

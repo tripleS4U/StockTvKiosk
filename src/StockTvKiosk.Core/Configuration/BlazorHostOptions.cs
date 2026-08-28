@@ -53,6 +53,21 @@ namespace StockTvKiosk.Core.Configuration
         public bool StopExistingInstance { get => _StopExistingInstance; set { if (!object.Equals(_StopExistingInstance, value)) { _StopExistingInstance = value; } } }
 
         /// <summary>
+        /// Wie lange vor dem Start geprueft wird, ob die Primaer-URL bereits antwortet;
+        /// <c>0</c> schaltet die Pruefung ab.
+        /// </summary>
+        /// <remarks>
+        /// Diese Pruefung ist die aussagekraeftigste: antwortet die Adresse, laeuft StockTV -
+        /// gleich ob von Hand gestartet, per Autostart oder als Dienst. Ports und Prozessnamen
+        /// sind daneben nur Indizien. Nicht unter 5 s setzen: <c>localhost</c> loest zuerst auf
+        /// <c>::1</c> auf, und dieser Versuch braucht rund 2 s, bevor auf <c>127.0.0.1</c>
+        /// zurueckgefallen wird.
+        /// </remarks>
+        private int _UrlProbeTimeoutSeconds = 5;
+        [Description("Seconds to check whether the primary URL already answers before starting; 0 = skip")]
+        public int UrlProbeTimeoutSeconds { get => _UrlProbeTimeoutSeconds; set { if (!object.Equals(_UrlProbeTimeoutSeconds, value)) { _UrlProbeTimeoutSeconds = value; } } }
+
+        /// <summary>
         /// Ports, die vor dem Start frei sein muessen. Vorgabe sind die NetMQ-Ports, die
         /// StockTV exklusiv belegt; der Port aus <c>ASPNETCORE_URLS</c> kommt automatisch dazu.
         /// </summary>

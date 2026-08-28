@@ -73,11 +73,17 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
   Fensterpositionierung liegt dort beim Compositor — der Kiosk erkennt das und warnt im Log.
   Auf Raspberry Pi OS Bookworm per `raspi-config` auf X11 stellen.
 - **Prozess-Management:** Konfigurierbar (`KioskOptions > BlazorHost > Enabled`). Aus = StockTV wird
-  extern gestartet; ein = der Kiosk startet und beendet StockTV selbst. Vor dem Start wird
-  geprüft, ob schon eine Instanz läuft oder einer der Ports belegt ist (NetMQ 4747/4748 plus
-  der Port aus `ASPNETCORE_URLS`). `StopExistingInstance` entscheidet dann: `false` (Standard,
-  seit 28.08.2026) lässt den Bestand in Ruhe und startet nichts, `true` räumt ab und startet
-  selbst. Einen **fremden** Portbelegen räumt der Kiosk nie ab.
+  extern gestartet; ein = der Kiosk startet und beendet StockTV selbst. Vor dem Start prüft er
+  im Hintergrund (die Fenster warten nicht darauf) in drei Stufen:
+  1. **Antwortet die Primaer-URL?** Dann läuft StockTV bereits — egal ob von Hand, per
+     Autostart oder **als Dienst installiert** — und es wird nichts gestartet. Diese Stufe
+     sticht auch `StopExistingInstance = true`: einen Dienst abzuschießen bringt nur den
+     Dienstverwalter zum Neustart, und nötig wäre es nicht.
+  2. Läuft ein Prozess gleichen Namens oder ist einer der Ports belegt (NetMQ 4747/4748 plus
+     der Port aus `ASPNETCORE_URLS`)? Dann entscheidet `StopExistingInstance`: `false`
+     (Standard seit 28.08.2026) lässt den Bestand in Ruhe, `true` räumt ab.
+  3. Nach dem Abräumen bis zu 5 s auf die Portfreigabe warten. Bleibt ein Port belegt, hält
+     ihn ein **fremder** Prozess — den räumt der Kiosk nie ab und startet dann auch nicht.
 
 - **Autostart:** Umgesetzt für beide Plattformen unter `deploy/` — systemd-User-Units für Linux,
   Aufgabenplanung für Windows. Jeweils zwei getrennte Einheiten (StockTV und Anzeige), damit sich

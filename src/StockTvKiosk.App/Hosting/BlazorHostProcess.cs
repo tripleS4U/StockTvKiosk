@@ -19,6 +19,12 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     private string? _stdoutLogPath;
     private string? _stderrLogPath;
 
+    /// <summary>Laeuft im Hintergrund; siehe <see cref="StartIfEnabled"/>.</summary>
+    private Task _startup = Task.CompletedTask;
+
+    /// <summary>Bricht die Vorpruefungen ab, wenn der Kiosk beendet wird, waehrend sie laufen.</summary>
+    private readonly CancellationTokenSource _lifetime = new();
+
     public bool IsManaged => options.Enabled;
 
     /// <param name="readinessProbe">
@@ -36,6 +42,32 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             return;
         }
 
+        // Ab hier wird nicht mehr im Aufrufer gearbeitet: die Vorpruefungen kosten Zeit -
+        // allein die Adressabfrage rund 2 s, wenn nichts antwortet, weil localhost zuerst auf
+        // ::1 aufloest. Die Fenster sollen deswegen nicht spaeter erscheinen; sie zeigen
+        // ohnehin ihre Statusseite, bis StockTV liefert.
+        _startup = Task.Run(() => StartAsync(readinessProbe, _lifetime.Token));
+    }
+
+    private async Task StartAsync(Uri? readinessProbe, CancellationToken cancellationToken)
+    {
+        bool urlIsServing = readinessProbe is not null
+                            && await IsAlreadyServingAsync(readinessProbe, cancellationToken);
+
+        // Die Adressabfrage steht vor dem Suchen der Anwendung: laeuft StockTV als Dienst,
+        // liegt die Datei womoeglich gar nicht dort, wo der Kiosk sie erwartet - eine
+        // Fehlermeldung darueber waere dann irrefuehrend, es fehlt ja nichts.
+        if (urlIsServing)
+        {
+            logger.LogInformation(
+                "StockTV antwortet bereits unter {Url} - der Kiosk startet keine eigene Instanz.",
+                readinessProbe);
+            return;
+        }
+
+        if (cancellationToken.IsCancellationRequested)
+            return;
+
         var executable = ResolveExecutable();
         if (executable is null)
         {
@@ -46,7 +78,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             return;
         }
 
-        if (!MayStart(executable))
+        if (!MayStart(executable, urlIsServing: false, cancellationToken))
             return;
 
         var startInfo = new ProcessStartInfo(executable.FullName)
@@ -110,7 +142,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     /// daran zwangslaeufig. Blind zu starten hiesse ausserdem, eine laufende Wertung
     /// abzuraeumen - nur weil der Kiosk neu gestartet wurde.
     /// </remarks>
-    private bool MayStart(FileInfo executable)
+    private bool MayStart(FileInfo executable, bool urlIsServing, CancellationToken cancellationToken)
     {
         string processName = Path.GetFileNameWithoutExtension(executable.Name);
         var ports = BlazorHostGuard.PortsToCheck(options);
@@ -120,7 +152,8 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
         try
         {
             var verdict = BlazorHostGuard.Decide(
-                running.Count, BlazorHostGuard.FindListeningPorts(ports), options.StopExistingInstance);
+                urlIsServing, running.Count, BlazorHostGuard.FindListeningPorts(ports),
+                options.StopExistingInstance);
 
             switch (verdict.Decision)
             {
@@ -138,7 +171,7 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
                     logger.LogWarning(
                         "{Reason} StopExistingInstance ist true - der Bestand wird abgeraeumt.", verdict.Reason);
                     StopExistingInstances(running);
-                    return PortsAreFreeAfterStopping(ports);
+                    return PortsAreFreeAfterStopping(ports, cancellationToken);
             }
         }
         finally
@@ -153,11 +186,11 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
     /// belegt, haelt ihn etwas anderes als StockTV - dann ist ein Start aussichtslos, und den
     /// fremden Halter abzuschiessen steht dem Kiosk nicht zu.
     /// </summary>
-    private bool PortsAreFreeAfterStopping(IReadOnlyList<int> ports)
+    private bool PortsAreFreeAfterStopping(IReadOnlyList<int> ports, CancellationToken cancellationToken)
     {
         var deadline = DateTime.UtcNow.AddSeconds(5);
 
-        while (true)
+        while (!cancellationToken.IsCancellationRequested)
         {
             var busy = BlazorHostGuard.FindListeningPorts(ports);
             if (busy.Count == 0)
@@ -173,6 +206,48 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
             }
 
             Thread.Sleep(250);
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Fragt einmal ab, ob unter der Adresse schon jemand liefert.
+    /// </summary>
+    /// <remarks>
+    /// Jede HTTP-Antwort zaehlt, auch 404 oder 500 - dann steht der Server, und ihn ein
+    /// zweites Mal zu starten kann nur schiefgehen. Das ist dieselbe Regel wie bei der
+    /// Verbindungsueberwachung der Fenster.
+    /// </remarks>
+    private async Task<bool> IsAlreadyServingAsync(Uri probe, CancellationToken cancellationToken)
+    {
+        if (options.UrlProbeTimeoutSeconds <= 0)
+            return false;
+
+        // Kein Proxy: das Ziel ist ein lokaler Dienst. Ein im System hinterlegter
+        // Unternehmensproxy wuerde die Pruefung sonst ins Leere laufen lassen.
+        using var http = new HttpClient(new HttpClientHandler { UseProxy = false })
+        {
+            Timeout = TimeSpan.FromSeconds(options.UrlProbeTimeoutSeconds)
+        };
+
+        try
+        {
+            using var response = await http.GetAsync(
+                probe, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            logger.LogDebug("Vorabpruefung: {Url} antwortet mit HTTP {Status}.",
+                probe, (int)response.StatusCode);
+            return true;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug("Vorabpruefung: {Url} antwortet nicht ({Reason}).", probe, ex.Message);
+            return false;
         }
     }
 
@@ -404,7 +479,14 @@ internal sealed class BlazorHostProcess(BlazorHostOptions options, ILogger logge
 
     public void Dispose()
     {
-        // Erst die Warteschleife stoppen, sonst meldet sie beim Herunterfahren noch einen
+        // Zuerst den Hintergrundstart abwarten. Ohne das koennte er gerade dabei sein, einen
+        // Prozess zu starten, den anschliessend niemand mehr beendet - _process waere dann
+        // schon gelesen und die Instanz bliebe nach dem Kiosk zurueck.
+        _lifetime.Cancel();
+        try { _startup.Wait(TimeSpan.FromSeconds(5)); } catch { /* beim Beenden egal */ }
+        _lifetime.Dispose();
+
+        // Dann die Warteschleife stoppen, sonst meldet sie beim Herunterfahren noch einen
         // "hat sich beendet"-Fehler, den wir selbst ausgeloest haben.
         if (_readinessCts is not null)
         {

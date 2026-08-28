@@ -29,6 +29,11 @@ public sealed record HostStartVerdict(HostStartDecision Decision, string Reason)
 /// Umstaenden die laufende Wertung schon abgeraeumt. Deshalb wird vorher nachgesehen statt
 /// blind zu starten.
 ///
+/// Massgeblich ist dabei, ob die Adresse antwortet: das gilt gleichermassen fuer eine von
+/// Hand gestartete Instanz, einen Autostart und einen installierten Dienst. Prozessnamen und
+/// belegte Ports sind daneben nur Indizien - ein Dienst laeuft moeglicherweise unter einem
+/// anderen Kontext, und ein belegter Port sagt nicht, wer ihn haelt.
+///
 /// Reine Entscheidungslogik ohne Seiteneffekte, damit sie ohne laufende Prozesse pruefbar ist.
 /// </remarks>
 public static class BlazorHostGuard
@@ -112,13 +117,25 @@ public static class BlazorHostGuard
         }
     }
 
+    /// <param name="urlIsServing">Ob die Primaer-URL bereits antwortet.</param>
     /// <param name="runningProcesses">Anzahl bereits laufender StockTV-Prozesse.</param>
     /// <param name="busyPorts">Belegte Ports aus <see cref="FindListeningPorts"/>.</param>
     /// <param name="mayStopExisting">KioskOptions &gt; BlazorHost &gt; StopExistingInstance.</param>
     public static HostStartVerdict Decide(
-        int runningProcesses, IReadOnlyList<int> busyPorts, bool mayStopExisting)
+        bool urlIsServing, int runningProcesses, IReadOnlyList<int> busyPorts, bool mayStopExisting)
     {
         ArgumentNullException.ThrowIfNull(busyPorts);
+
+        // Die Adresse antwortet - damit ist alles beantwortet, was der Kiosk wissen muss, und
+        // zwar unabhaengig davon, wie StockTV gestartet wurde: von Hand, per Autostart oder
+        // als Dienst. Auch StopExistingInstance sticht hier nicht: laeuft StockTV als Dienst,
+        // wuerde der Abschuss nur den Dienstverwalter zum Neustart bringen - ein Wettlauf, den
+        // niemand gewinnt. Und noetig waere er nicht, die Adresse liefert ja bereits.
+        if (urlIsServing)
+        {
+            return new HostStartVerdict(HostStartDecision.Skip,
+                "StockTV antwortet bereits unter seiner Adresse.");
+        }
 
         if (runningProcesses <= 0 && busyPorts.Count == 0)
             return new HostStartVerdict(HostStartDecision.Start, "Es laeuft keine StockTV-Instanz.");
