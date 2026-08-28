@@ -348,7 +348,7 @@ installiert und geprueft:
 
 ```powershell
 .\deploy\bundle\Publish-Bundle.ps1        # Entwicklungsrechner -> C:\StockTV-Install
-.\Install-StockTV.ps1                     # Zielrechner -> C:\StockTV\StockTvApps\
+.\Install-StockTV.ps1                     # Zielrechner -> C:\StockTvApps\
 .\Test-Installation.ps1                   # Zielrechner, veraendert nichts
 ```
 
@@ -392,7 +392,7 @@ Deinstallieren: `./deploy/linux/uninstall-linux.sh`
 ### Windows (Aufgabenplanung)
 
 ```powershell
-.\deploy\windows\Install-KioskTask.ps1 -KioskPath C:\StockTV\Kiosk\StockTvKiosk.exe -StockTvPath C:\StockTV\App\StockTvBlazor.exe
+.\deploy\windows\Install-KioskTask.ps1 -KioskPath C:\StockTvApps\StockTvKiosk\StockTvKiosk.exe -StockTvPath C:\StockTvApps\StockTV\StockTvBlazor.exe
 ```
 
 Legt die Tasks `\StockTV\StockTV` und `\StockTV\StockTV-Kiosk` an, die bei der Anmeldung

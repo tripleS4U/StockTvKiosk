@@ -8,19 +8,22 @@
 
     Aufbau des Pakets:
 
-        C:\StockTV\
-          win-x64\
+        C:\StockTV-Install\
+          StockTvApps\
             StockTV\             StockTvBlazor, self-contained
-            Kiosk\               StockTvKiosk, self-contained
+            StockTvKiosk\        StockTvKiosk, self-contained
           config\                Vorlagen, siehe Install-StockTV.ps1
+          WebView2\              Installer der WebView2-Runtime, siehe -WebView2
           Install-StockTV.ps1
           Test-Installation.ps1
           Install-KioskTask.ps1  aus deploy/windows, wird von der Installation aufgerufen
           VERSION.txt
           README.md
 
-    Die Ebene "win-x64" ist Absicht: ein spaeterer Zweig fuer den Raspberry Pi kommt als
-    "linux-arm64" daneben, ohne dass sich am Rest etwas aendert.
+    Der Ordner StockTvApps ist genau das, was die Installation nach C:\ legt - Paket und
+    Installation sind deckungsgleich aufgebaut.
+
+    Ein spaeterer Zweig fuer den Raspberry Pi bekommt ein eigenes Paket, siehe -Runtime.
 
 .PARAMETER OutputRoot
     Zielordner des Pakets. Wird geleert, sofern er nur aus einem frueheren Lauf stammt.

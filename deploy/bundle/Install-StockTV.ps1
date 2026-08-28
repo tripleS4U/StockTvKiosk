@@ -20,14 +20,14 @@
     Bahnnummer, Farben und den API-Schluessel stehen. Mit -ResetConfig ausdruecklich neu.
 
     Installiert wird nach:
-        <InstallDir>\StockTvApps\StockTV\        StockTvBlazor + _config + _logs
-        <InstallDir>\StockTvApps\StockTvKiosk\   StockTvKiosk  + _config + _logs
+        C:\StockTvApps\StockTV\        StockTvBlazor + _config + _logs
+        C:\StockTvApps\StockTvKiosk\   StockTvKiosk  + _config + _logs
 
 .EXAMPLE
     .\Install-StockTV.ps1
 
     Erstinstallation mit den Vorgaben: StockTV als Windows-Dienst auf Port 8080 nach
-    C:\StockTV\StockTvApps\, Kiosk als geplanter Task. Braucht Administratorrechte.
+    C:\StockTvApps\, Kiosk als geplanter Task. Braucht Administratorrechte.
 
 .EXAMPLE
     .\Install-StockTV.ps1 -WhatIfOnly
@@ -60,7 +60,7 @@
     API-Schluessel.
 
 .EXAMPLE
-    .\Install-StockTV.ps1 -InstallDir D:\StockTV -SkipWebView2
+    .\Install-StockTV.ps1 -InstallDir D:\StockTvApps -SkipWebView2
 
     Anderes Zielverzeichnis, und die WebView2-Runtime wird nicht angefasst (etwa weil sie
     ueber die Softwareverteilung kommt).
@@ -72,7 +72,7 @@ param(
 
     [string]$SourceDir = $PSScriptRoot,
 
-    [string]$InstallDir = "C:\StockTV",
+    [string]$InstallDir = "C:\StockTvApps",
 
     [ValidateRange(1, 65535)]
     [int]$Port = 8080,
@@ -105,13 +105,12 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# Beide Anwendungen liegen gleichrangig unter StockTvApps. Nebeneinander direkt in InstallDir
-# ginge nicht: sie lesen ihre Konfiguration jeweils aus einem _config neben der
-# Programmdatei, und die Laufzeitdateien der beiden self-contained Builds wuerden sich
+# Beide Anwendungen bekommen ihr eigenes Verzeichnis unter InstallDir. Nebeneinander in
+# einem Ordner ginge nicht: sie lesen ihre Konfiguration jeweils aus einem _config neben
+# der Programmdatei, und die Laufzeitdateien der beiden self-contained Builds wuerden sich
 # gegenseitig ueberschreiben.
-$AppsDir     = Join-Path $InstallDir "StockTvApps"
-$StockTvHome = Join-Path $AppsDir "StockTV"
-$KioskDir    = Join-Path $AppsDir "StockTvKiosk"
+$StockTvHome = Join-Path $InstallDir "StockTV"
+$KioskDir    = Join-Path $InstallDir "StockTvKiosk"
 
 $done     = [System.Collections.Generic.List[string]]::new()
 $warnings = [System.Collections.Generic.List[string]]::new()
@@ -172,9 +171,9 @@ Step "Paket vollstaendig."
 
 <#
     Verteilpaket und Installation duerfen nicht derselbe Ordner sein. Sonst kopierte die
-    Installation die Anwendungen aus Apps\ in genau das Verzeichnis, das Apps\ enthaelt -
-    das laeuft zwar, laesst aber 250 MB doppelt liegen und macht spaeter niemandem klar,
-    was davon die Installation ist und was das Paket.
+    Installation die Anwendungen aus StockTvApps\ in genau das Verzeichnis, das den Ordner
+    enthaelt - das laeuft zwar, laesst aber 260 MB doppelt liegen und macht spaeter
+    niemandem klar, was davon die Installation ist und was das Paket.
 #>
 $sourceFull  = [IO.Path]::GetFullPath($SourceDir).TrimEnd('\')
 $installFull = [IO.Path]::GetFullPath($InstallDir).TrimEnd('\')
@@ -187,7 +186,7 @@ Das waere dasselbe Verzeichnis (oder eines darunter).
 Das Paket gehoert daneben, nicht hinein - vorgesehen ist:
     Paket nach C:\StockTV-Install kopieren und dort
     .\Install-StockTV.ps1
-laufen lassen; installiert wird dann nach C:\StockTV.
+laufen lassen; installiert wird dann nach C:\StockTvApps.
 
 Alternativ mit -InstallDir ein anderes Zielverzeichnis angeben.
 "@
@@ -345,7 +344,7 @@ $kioskWritten = Install-ConfigFile -Template $kioskTemplate -Target $kioskConfig
         # Adresse - ASPNETCORE_URLS leitet der Kiosk davon ab.
         $text = $text.Replace('http://localhost:8080/', "http://localhost:$Port/")
         $text = $text.Replace('http://+:8080', "http://+:$Port")
-        $text = $text.Replace('"C:\\StockTV\\StockTvApps\\StockTV\\StockTvBlazor.exe"',
+        $text = $text.Replace('"C:\\StockTvApps\\StockTV\\StockTvBlazor.exe"',
                               '"' + (ConvertTo-JsonValue $stockTvExe) + '"')
         $text = $text -replace '("RestApi"[\s\S]*?"Port"\s*:\s*)\d+', "`${1}$KioskApiPort"
         $text = $text.Replace('"ApiKey": ""', '"ApiKey": "' + (ConvertTo-JsonValue $ApiKey) + '"')

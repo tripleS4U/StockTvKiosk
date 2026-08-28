@@ -33,10 +33,10 @@
     annimmt.
 
 .EXAMPLE
-    .\Test-Installation.ps1 -InstallDir D:\StockTV
+    .\Test-Installation.ps1 -InstallDir D:\StockTvApps
 
-    Abweichendes Installationsverzeichnis. Die Anwendungen werden darunter in
-    StockTvApps\StockTV und StockTvApps\StockTvKiosk erwartet.
+    Abweichendes Installationsverzeichnis. Die Anwendungen werden darunter in StockTV\ und
+    StockTvKiosk\ erwartet.
 
 .EXAMPLE
     if (.\Test-Installation.ps1) { } else { "Installation in Ordnung" }
@@ -45,7 +45,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$InstallDir = "C:\StockTV",
+    [string]$InstallDir = "C:\StockTvApps",
     [string]$ServiceName = "StockTV",
     [string]$ApiKey,
     [int]$TimeoutSeconds = 10
@@ -53,9 +53,8 @@ param(
 
 $ErrorActionPreference = "Continue"
 
-$AppsDir     = Join-Path $InstallDir "StockTvApps"
-$StockTvHome = Join-Path $AppsDir "StockTV"
-$KioskDir    = Join-Path $AppsDir "StockTvKiosk"
+$StockTvHome = Join-Path $InstallDir "StockTV"
+$KioskDir    = Join-Path $InstallDir "StockTvKiosk"
 
 $results = [System.Collections.Generic.List[object]]::new()
 

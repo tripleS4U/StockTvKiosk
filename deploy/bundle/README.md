@@ -15,15 +15,21 @@ C:\StockTV-Install\          <- das Paket, auf den Zielrechner kopieren
   Install-KioskTask.ps1      Autostart des Kiosks (ruft die Installation auf)
   VERSION.txt                woraus das Paket gebaut wurde
 
-C:\StockTV\                  <- die Installation
-  StockTvApps\
-    StockTV\                 + _config\stocktv.config.json, _logs\
-    StockTvKiosk\            + _config\AppConfig.json, _logs\
+C:\StockTvApps\              <- die Installation
+  StockTV\                   + _config\stocktv.config.json, _logs\
+  StockTvKiosk\              + _config\AppConfig.json, _logs\
 ```
+
+Der Ordner `StockTvApps` im Paket ist genau das, was die Installation nach `C:\` legt —
+Paket und Installation sind damit deckungsgleich aufgebaut.
 
 Paket und Installation sind bewusst **zwei** Ordner. Laege das Paket in der Installation,
 kaemen 260 MB doppelt zu liegen, und spaeter waere nicht mehr zu erkennen, was wovon ist.
 Die Installation bricht in dem Fall mit einem Hinweis ab.
+
+Die beiden Anwendungen brauchen getrennte Verzeichnisse: jede liest ihre Konfiguration aus
+einem `_config` **neben der Programmdatei**, und die Laufzeitdateien der beiden
+self-contained Builds wuerden sich in einem gemeinsamen Ordner gegenseitig ueberschreiben.
 
 ---
 
@@ -141,7 +147,7 @@ wenn niemand Administratorrechte auf dem Geraet hat.
 | Parameter | Vorgabe | Bedeutung |
 |---|---|---|
 | `-Mode` | `Service` | siehe oben |
-| `-InstallDir` | `C:\StockTV` | beide Anwendungen landen darunter in `StockTvApps\` |
+| `-InstallDir` | `C:\StockTvApps` | die beiden Anwendungen landen darunter in `StockTV\` und `StockTvKiosk\` |
 | `-Port` | `8080` | HTTP-Port von StockTV, wird in beide Konfigurationen eingesetzt |
 | `-KioskApiPort` | `8099` | Port der Kiosk-Fernsteuerung |
 | `-ApiKey` | *(erzeugt)* | Schluessel der Fernsteuerung |
@@ -203,5 +209,5 @@ selbst erreichbar.
 ```powershell
 .\Uninstall-KioskTask.ps1                          # Autostart des Kiosks
 Stop-Service StockTV; sc.exe delete StockTV        # Dienst (Administrator)
-Remove-Item C:\StockTV -Recurse -Force             # Dateien samt Konfiguration
+Remove-Item C:\StockTvApps -Recurse -Force         # Dateien samt Konfiguration
 ```
