@@ -205,6 +205,9 @@ Bedienoberflaeche: **`http://<geraet>:8099/swagger`**
 | `GET` | `/api/display/mode` | Anzeigemodus, Bildschirme, Fensteraufteilung |
 | `POST` | `/api/display/duplicate` | Auf *Duplizieren* umschalten |
 | `POST` | `/api/display/extend` | Auf *Erweitern* umschalten |
+| `GET` | `/api/config` | Konfigurationsdatei herunterladen |
+| `PUT` | `/api/config` | Konfigurationsdatei ersetzen (Datei-Upload) |
+| `POST` | `/api/config/default` | Konfigurationsdatei mit Standardwerten neu anlegen |
 | `POST` | `/api/kiosk/reload` | Blazor-Seiten neu laden |
 | `POST` | `/api/kiosk/relayout` | Nur die Fenster neu anordnen |
 
@@ -214,6 +217,34 @@ curl -X POST -H "X-Api-Key: $KEY" http://kiosk:8099/api/display/extend
 curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
      -d '{"delaySeconds":60}' http://kiosk:8099/api/system/reboot
 ```
+
+### Konfiguration aus der Ferne
+
+```bash
+curl -H "X-Api-Key: $KEY" http://kiosk:8099/api/config -o AppConfig.json
+# bearbeiten ...
+curl -X PUT -H "X-Api-Key: $KEY" -F "file=@AppConfig.json" http://kiosk:8099/api/config
+curl -X POST -H "X-Api-Key: $KEY" http://kiosk:8099/api/system/reboot
+```
+
+Der Neustart am Ende ist noetig: die laufenden Fenster und Dienste arbeiten mit den Werten,
+die sie beim Hochfahren gelesen haben.
+
+Vor dem Ersetzen wird die neue Datei probeweise eingelesen. Scheitert das, bleibt die
+bisherige unveraendert und die Antwort nennt die Stelle (400). Das ist keine Formsache:
+eine unlesbare Datei legt der Kiosk beim naechsten Start beiseite und faengt mit
+Standardwerten an — damit waere auch der API-Schluessel weg und das Geraet aus der Ferne
+nicht mehr erreichbar. Die bisherige Fassung wird zusaetzlich als `AppConfig.json.bak`
+gesichert.
+
+`POST /api/config/default` legt die Datei mit Standardwerten neu an und **behaelt dabei die
+Einstellungen der REST-Schnittstelle** — aus demselben Grund. Wer wirklich alles
+zuruecksetzen will, haengt `?keepRestApi=false` an; danach ist das Geraet nur noch vor Ort
+erreichbar.
+
+> Die heruntergeladene Datei enthaelt den API-Schluessel als `enc:…`. Das ist Verschleierung,
+> keine Verschluesselung mit einem Geheimnis, das nur der Kiosk kennt — behandle die Datei
+> wie den Schluessel selbst.
 
 ### Schluessel
 
@@ -459,6 +490,10 @@ Bildschirme und der Fensterplan zur Erwartung passen.
 | 31 | Windows | nichts laeuft | Fenster erscheinen vor den Vorpruefungen, StockTV startet danach | ✅ verifiziert |
 | 32 | Windows | zweite Installation haelt 4747/4748, `StopExistingInstance = true` | fremder Prozess bleibt am Leben, Pfad im Log, kein Start | ✅ verifiziert |
 | 33 | Windows | `Environment` leer | `ASPNETCORE_URLS` aus `PrimaryUrl` abgeleitet, StockTV lauscht auf 5129 | ✅ verifiziert |
+| 34 | Windows | `GET /api/config` | Datei als Download, `AppConfig.json` | ✅ verifiziert |
+| 35 | Windows | `PUT /api/config` mit kaputter Datei | 400 mit Fundstelle, Datei auf dem Geraet unveraendert | ✅ verifiziert |
+| 36 | Windows | `PUT /api/config` mit gueltiger Datei | uebernommen, `.bak` angelegt | ✅ verifiziert |
+| 37 | Windows | `POST /api/config/default`, danach Neustart | Standardwerte, aber Schluessel gilt weiter | ✅ verifiziert |
 
 Automatisiert abgedeckt sind alle Layout-Entscheidungen aus #1–#4, #6, die
 Anzeigemodus-Erkennung, die Befehlsermittlung fuer #19–#24 auf beiden Plattformen sowie

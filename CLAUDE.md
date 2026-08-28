@@ -107,6 +107,13 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
 - **REST-Schnittstelle:** Kestrel im selben Prozess wie die Fenster (das Neuanordnen nach
   einem Moduswechsel muss über den UI-Thread laufen), Controller + Swashbuckle/Swagger unter
   `/swagger`. Konfiguration unter `KioskOptions > RestApi`, `> Power`, `> DisplayControl`.
+- **Konfiguration über die Schnittstelle:** `GET/PUT /api/config` (Datei herunterladen und
+  ersetzen) und `POST /api/config/default`. Vor dem Ersetzen wird die neue Datei probeweise
+  eingelesen — eine unlesbare Datei würde beim nächsten Start beiseitegelegt und damit auch
+  den API-Schlüssel mitnehmen. Aus demselben Grund behält `default` die `RestApi`-Werte
+  (`?keepRestApi=false` setzt auch die zurück). Die bisherige Fassung landet als `.bak`.
+  Zu beachten: wer hochladen darf, kann `Power.RebootCommand` frei belegen — der API-Schlüssel
+  ist damit Vollzugriff auf das Gerät.
 - **Absicherung:** Standard ist `0.0.0.0:8099` mit `ApiKey` als Pflicht. Fehlt der Schlüssel
   bei einer nicht-Loopback-Bindung, startet die Schnittstelle gar nicht erst — sonst ginge ein
   Gerät mit offenem Neustart-Endpunkt ins Netz. Der Schlüssel liegt `[Secret]`-verschlüsselt
