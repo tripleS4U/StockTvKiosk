@@ -4,20 +4,40 @@ Ein Ordner, der beide Anwendungen verteilfertig enthaelt: **StockTV** (die Punkt
 und den **StockTV-Kiosk** (die Vollbildanzeige davor). Er wird auf dem Entwicklungsrechner
 gebaut, als Ganzes auf den Zielrechner kopiert und dort installiert.
 
+Es gibt zwei Pakete — eines je Zielplattform. Der Aufbau ist derselbe, nur die Skripte
+unterscheiden sich.
+
 ```
-C:\StockTV-Install\          <- das Paket, auf den Zielrechner kopieren
+C:\StockTV-Install\          <- Windows, auf den Zielrechner kopieren
   StockTvApps\
-    StockTV\                 StockTvBlazor, self-contained
-    StockTvKiosk\            StockTvKiosk, self-contained
+    StockTV\                 StockTvBlazor, self-contained win-x64
+    StockTvKiosk\            StockTvKiosk, self-contained win-x64
   config\                    Konfigurationsvorlagen
+  WebView2\                  Installer der WebView2-Runtime
   Install-StockTV.ps1        Installation
   Test-Installation.ps1      Pruefung ohne Seiteneffekte
   Install-KioskTask.ps1      Autostart des Kiosks (ruft die Installation auf)
   VERSION.txt                woraus das Paket gebaut wurde
 
-C:\StockTvApps\              <- die Installation
+C:\StockTvApps\              <- die Installation unter Windows
   StockTV\                   + _config\stocktv.config.json, _logs\
   StockTvKiosk\              + _config\AppConfig.json, _logs\
+```
+
+```
+C:\StockTV-Install-linux-arm64\   <- Raspberry Pi, per scp/rsync aufs Geraet
+  StockTvApps\
+    StockTV\                      self-contained linux-arm64
+    StockTvKiosk\                 self-contained linux-arm64
+  config\                         dieselben Vorlagen, dazu die *.linux.json
+  units/                          systemd-Vorlagen
+  install-stocktv.sh              Installation
+  test-installation.sh            Pruefung ohne Seiteneffekte
+  VERSION.txt
+
+/opt/stocktvapps/                 <- die Installation auf dem Pi
+  StockTV/                        + _config/stocktv.config.json, _logs/
+  StockTvKiosk/                   + _config/AppConfig.json, _logs/
 ```
 
 Der Ordner `StockTvApps` im Paket ist genau das, was die Installation nach `C:\` legt —
@@ -46,15 +66,21 @@ sind — beim Kiosk waren das 552 MB von 604 MB.
 | Publish ohne Zielplattform | 604 MB |
 | self-contained `win-x64` | **135 MB**, alles flach im Ordner |
 
-### Die eine Ausnahme: WebView2
+### Die eine Ausnahme: die Web-Engine
 
-Eine Abhaengigkeit deckt self-contained nicht ab — die **WebView2-Runtime**. Sie ist ein
-Windows-Systempaket, kein .NET-Bestandteil. Unter Windows 11 ist sie vorinstalliert, unter
-Windows 10 kann sie fehlen; dann startet der Kiosk und zeigt eine leere Flaeche, ohne
-Absturz und ohne Fehlermeldung.
+Der WebView nutzt die **native Engine der Plattform** — unter Windows WebView2, unter Linux
+WebKitGTK. Beide sind Systempakete und kein .NET-Bestandteil; sie sind das Einzige, was ein
+self-contained Build nicht mitbringt. Fehlen sie, startet der Kiosk und zeigt eine leere
+Flaeche, ohne Absturz und ohne Fehlermeldung.
 
-Das Paket bringt deshalb einen Installer mit, und `Install-StockTV.ps1` fuehrt ihn aus,
-wenn die Runtime fehlt:
+Unter Linux uebernimmt das die Paketverwaltung: `install-stocktv.sh` prueft
+`libgtk-3-0`, `libwebkit2gtk-4.1-0` und `libsoup-3.0-0` und installiert sie bei Bedarf per
+`apt`. Unter Windows liegt ein Installer im Paket:
+
+#### WebView2 (nur Windows)
+
+Unter Windows 11 ist die Runtime vorinstalliert, unter Windows 10 kann sie fehlen.
+`Install-StockTV.ps1` fuehrt den beiliegenden Installer aus, wenn sie fehlt:
 
 | `-WebView2` | im Paket | Zielrechner braucht Internet |
 |---|---|---|
@@ -72,7 +98,7 @@ vorgesehen, denn sie bekommt **keine Sicherheitsupdates** — auf einem Geraet, 
 in einer Halle steht und eine Weboberflaeche rendert, ist das der schlechtere Tausch. Die
 beiden Installer oben tragen die Runtime ins System ein, wo Edge sie selbst aktuell haelt.
 
-`Test-Installation.ps1` prueft ihr Vorhandensein ausdruecklich.
+Beide Pruefskripte melden eine fehlende Engine ausdruecklich als Fehler.
 
 ---
 
@@ -93,11 +119,59 @@ Versionsstempel dazu.
 | `-WebView2` | `Bootstrapper` | welcher WebView2-Installer beiliegt, siehe oben |
 | `-SkipStockTv` / `-SkipKiosk` | | eine Seite stehen lassen |
 
-Fuer den Raspberry Pi spaeter:
+Fuer den Raspberry Pi:
 
 ```powershell
 .\Publish-Bundle.ps1 -Runtime linux-arm64 -OutputRoot C:\StockTV-Install-linux-arm64
 ```
+
+Bewusst ein eigenes Paket statt zwei Plattformen in einem: sonst kopierte jedes Zielgeraet
+den Ballast der jeweils anderen mit. Welche Skripte beiliegen, richtet sich nach `-Runtime`
+— Windows bekommt die `.ps1`-Dateien und den WebView2-Installer, Linux die `.sh`-Dateien
+und die systemd-Vorlagen.
+
+---
+
+## Installieren auf dem Raspberry Pi
+
+```bash
+scp -r C:\StockTV-Install-linux-arm64 pi@kiosk:~/stocktv-install     # vom Windows-Rechner
+```
+
+```bash
+cd ~/stocktv-install
+chmod +x install-stocktv.sh test-installation.sh
+./install-stocktv.sh --bahn 3
+./test-installation.sh
+```
+
+Das Ausfuehrbarkeitsbit muss von Hand gesetzt werden: es geht verloren, wenn das Paket ueber
+ein Windows-Dateisystem, SMB oder ein ZIP kommt. Die beiden Programmdateien setzt das
+Installationsskript selbst.
+
+| Option | Vorgabe | Bedeutung |
+|---|---|---|
+| `--mode service\|managed` | `service` | wie unter Windows |
+| `--install-dir <Pfad>` | `/opt/stocktvapps` | Zielverzeichnis |
+| `--port <N>` | `8080` | HTTP-Port von StockTV |
+| `--api-port <N>` | `8099` | Port der Kiosk-Fernsteuerung |
+| `--api-key <Wert>` | *(erzeugt)* | Schluessel der Fernsteuerung |
+| `--bahn <N>` | *(Vorlage)* | Bahnnummer |
+| `--display <:N>` | `:0` | X-Display fuer den Kiosk |
+| `--no-kiosk` | | keine Kiosk-Unit einrichten |
+| `--reset-config` | | Konfiguration auf die Vorlagen zuruecksetzen |
+| `--skip-deps` | | WebKitGTK nicht pruefen |
+| `--dry-run` | | nur anzeigen |
+
+Eingerichtet werden **systemd-User-Units** (`~/.config/systemd/user/`), kein `sudo` noetig —
+der Kiosk braucht ohnehin die grafische Sitzung des angemeldeten Benutzers. `sudo` kommt nur
+dort zum Einsatz, wo das Zielverzeichnis dem Benutzer nicht gehoert (`/opt`) und um
+WebKitGTK nachzuinstallieren.
+
+> **X11 statt Wayland.** Auf Raspberry Pi OS Bookworm laeuft der Desktop standardmaessig
+> unter Wayland; dort bestimmt der Compositor die Fensterposition, und die Zuordnung auf
+> zwei Bildschirme ist nicht garantiert. Umstellen mit `raspi-config` → *Advanced Options*
+> → *Wayland* → *X11*.
 
 ---
 
@@ -206,8 +280,18 @@ selbst erreichbar.
 
 ## Deinstallieren
 
+Windows:
+
 ```powershell
 .\Uninstall-KioskTask.ps1                          # Autostart des Kiosks
 Stop-Service StockTV; sc.exe delete StockTV        # Dienst (Administrator)
 Remove-Item C:\StockTvApps -Recurse -Force         # Dateien samt Konfiguration
+```
+
+Raspberry Pi:
+
+```bash
+systemctl --user disable --now stocktv-kiosk.service stocktv.service
+rm -f ~/.config/systemd/user/stocktv*.service && systemctl --user daemon-reload
+sudo rm -rf /opt/stocktvapps
 ```

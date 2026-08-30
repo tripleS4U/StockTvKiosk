@@ -176,18 +176,52 @@ if (-not $SkipKiosk)   { Publish-One $KioskProject   $KioskOut   "StockTV-Kiosk"
 
 Write-Host "== Skripte und Vorlagen ==" -ForegroundColor Cyan
 
+$isWindowsTarget = $Runtime -like "win-*"
+
+# Beide Plattformen bekommen dieselben Vorlagen mit: die Installation greift sich die
+# passende (AppConfig.<Mode>.json bzw. .linux.json). Ein paar Kilobyte mehr im Paket sind
+# das allemal wert - so laesst sich ein Paket auch nachtraeglich noch einordnen.
 $configOut = Join-Path $OutputRoot "config"
 New-Item -ItemType Directory -Path $configOut -Force | Out-Null
 Copy-Item (Join-Path $BundleDir "config\*") $configOut -Force
 
-foreach ($script in @("Install-StockTV.ps1", "Test-Installation.ps1", "README.md")) {
-    Copy-Item (Join-Path $BundleDir $script) $OutputRoot -Force
-}
+Copy-Item (Join-Path $BundleDir "README.md") $OutputRoot -Force
 
-# Der Task-Installer stammt aus deploy/windows und wird nicht kopiert, sondern
-# weitergereicht - so gibt es ihn weiterhin nur einmal im Repository.
-Copy-Item (Join-Path $KioskRepo "deploy\windows\Install-KioskTask.ps1")   $OutputRoot -Force
-Copy-Item (Join-Path $KioskRepo "deploy\windows\Uninstall-KioskTask.ps1") $OutputRoot -Force
+if ($isWindowsTarget) {
+    foreach ($script in @("Install-StockTV.ps1", "Test-Installation.ps1")) {
+        Copy-Item (Join-Path $BundleDir $script) $OutputRoot -Force
+    }
+
+    # Der Task-Installer stammt aus deploy/windows und wird nicht kopiert, sondern
+    # weitergereicht - so gibt es ihn weiterhin nur einmal im Repository.
+    Copy-Item (Join-Path $KioskRepo "deploy\windows\Install-KioskTask.ps1")   $OutputRoot -Force
+    Copy-Item (Join-Path $KioskRepo "deploy\windows\Uninstall-KioskTask.ps1") $OutputRoot -Force
+
+    Write-Host "   Windows-Skripte."
+}
+else {
+    foreach ($script in @("install-stocktv.sh", "test-installation.sh")) {
+        $target = Join-Path $OutputRoot $script
+
+        # Zeilenenden: ein Skript mit CRLF scheitert auf Linux an "bad interpreter".
+        # Der Umweg ueber WriteAllText ist noetig, weil Copy-Item die Datei
+        # unveraendert uebernaehme.
+        $text = [IO.File]::ReadAllText((Join-Path $BundleDir $script)) -replace "`r`n", "`n"
+        [IO.File]::WriteAllText($target, $text, (New-Object Text.UTF8Encoding $false))
+    }
+
+    # Die systemd-Vorlagen stammen wie der Task-Installer unter Windows aus deploy/ und
+    # liegen weiterhin nur einmal im Repository.
+    $unitsOut = Join-Path $OutputRoot "units"
+    New-Item -ItemType Directory -Path $unitsOut -Force | Out-Null
+
+    foreach ($unit in @("stocktv.service", "stocktv-kiosk.service")) {
+        $text = [IO.File]::ReadAllText((Join-Path $KioskRepo "deploy\linux\$unit")) -replace "`r`n", "`n"
+        [IO.File]::WriteAllText((Join-Path $unitsOut $unit), $text, (New-Object Text.UTF8Encoding $false))
+    }
+
+    Write-Host "   Linux-Skripte und systemd-Vorlagen."
+}
 
 # ---------------------------------------------------------------------------------------
 # WebView2-Installer beilegen
@@ -196,7 +230,12 @@ Copy-Item (Join-Path $KioskRepo "deploy\windows\Uninstall-KioskTask.ps1") $Outpu
 $webView2Dir = Join-Path $OutputRoot "WebView2"
 $webView2File = $null
 
-if ($WebView2 -eq "None") {
+if (-not $isWindowsTarget) {
+    # Unter Linux nutzt der Kiosk WebKitGTK aus der Paketverwaltung. Das Gegenstueck zur
+    # WebView2-Runtime installiert deshalb install-stocktv.sh per apt, nicht das Paket.
+    Write-Host "WebView2: entfaellt - unter Linux uebernimmt WebKitGTK (siehe install-stocktv.sh)." -ForegroundColor DarkGray
+}
+elseif ($WebView2 -eq "None") {
     Write-Host "WebView2: nichts beigelegt (-WebView2 None)." -ForegroundColor DarkGray
 }
 else {
@@ -245,12 +284,19 @@ Write-Host ""
 # Versionsstempel
 # ---------------------------------------------------------------------------------------
 
+<#
+    Linux-Builds tragen kein .exe, und ihre Programmdatei hat keine Windows-Versionsangabe.
+    Dort wird deshalb die zugehoerige .dll gelesen - die gibt es bei einem self-contained
+    Build in beiden Faellen und sie traegt die Version aus dem Projekt.
+#>
 function Get-Version {
-    param([string]$Directory, [string]$Executable)
+    param([string]$Directory, [string]$Assembly)
 
-    $path = Join-Path $Directory $Executable
+    $path = Join-Path $Directory "$Assembly.dll"
     if (-not (Test-Path $path)) { return "nicht im Paket" }
-    return (Get-Item $path).VersionInfo.FileVersion
+
+    $version = (Get-Item $path).VersionInfo.FileVersion
+    return $(if ($version) { $version } else { "unbekannt" })
 }
 
 function Get-GitDescription {
@@ -269,9 +315,9 @@ $version = @(
     "Rechner:   $env:COMPUTERNAME"
     "Konfiguration: $Configuration"
     ""
-    "StockTV        $(Get-Version $StockTvOut 'StockTvBlazor.exe')"
+    "StockTV        $(Get-Version $StockTvOut 'StockTvBlazor')"
     "  Quelle       $(Get-GitDescription $StockTvRepo)"
-    "StockTV-Kiosk  $(Get-Version $KioskOut 'StockTvKiosk.exe')"
+    "StockTV-Kiosk  $(Get-Version $KioskOut 'StockTvKiosk')"
     "  Quelle       $(Get-GitDescription $KioskRepo)"
 )
 
@@ -284,7 +330,17 @@ Write-Host ""
 Write-Host "==========================================" -ForegroundColor Green
 Write-Host "Paket fertig: $OutputRoot" -ForegroundColor Green
 Write-Host ""
-Write-Host "Naechster Schritt: den Ordner auf den Zielrechner kopieren und dort"
-Write-Host "  .\Install-StockTV.ps1              (StockTV als Dienst, Kiosk als Task)"
-Write-Host "  .\Install-StockTV.ps1 -Mode Managed (der Kiosk startet StockTV selbst)"
+Write-Host "Naechster Schritt: den Ordner auf das Zielgeraet kopieren und dort"
+
+if ($isWindowsTarget) {
+    Write-Host "  .\Install-StockTV.ps1               (StockTV als Dienst, Kiosk als Task)"
+    Write-Host "  .\Install-StockTV.ps1 -Mode Managed (der Kiosk startet StockTV selbst)"
+}
+else {
+    # chmod, weil das Ausfuehrbarkeitsbit beim Kopieren von einem Windows-Dateisystem
+    # verlorengeht - ueber SMB, FAT oder ein ZIP kommt es nicht mit.
+    Write-Host "  chmod +x install-stocktv.sh test-installation.sh"
+    Write-Host "  ./install-stocktv.sh                (zwei systemd-Units)"
+    Write-Host "  ./install-stocktv.sh --mode managed (der Kiosk startet StockTV selbst)"
+}
 Write-Host "==========================================" -ForegroundColor Green

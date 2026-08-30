@@ -9,7 +9,9 @@ Wants=network-online.target
 Type=simple
 WorkingDirectory=__STOCKTV_DIR__
 ExecStart=__STOCKTV_DIR__/StockTvBlazor
-Environment=ASPNETCORE_URLS=http://localhost:__PORT__
+# http://+ statt localhost: die Bedienung laeuft ueber Handys und Tablets im Netz, nicht nur
+# ueber den Kiosk auf demselben Geraet. Mit localhost waere StockTV von aussen unerreichbar.
+Environment=ASPNETCORE_URLS=http://+:__PORT__
 Environment=DOTNET_EnableDiagnostics=0
 
 Restart=always

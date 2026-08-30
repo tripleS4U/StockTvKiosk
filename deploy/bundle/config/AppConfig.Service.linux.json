@@ -1,0 +1,98 @@
+﻿{
+  "Logging": {
+    "description": "Logging configuration",
+    "value": {
+      "LogLevel": {
+        "Default": "Information",
+        "Microsoft": "Warning"
+      },
+      "File": {
+        "Enabled": true,
+        "Directory": "_logs",
+        "FileName": "kiosk.log",
+        "MaxFileSizeBytes": 5242880,
+        "RetainedFileCount": 3
+      }
+    }
+  },
+  "KioskOptions": {
+    "description": "Kiosk configuration",
+    "value": {
+      "Urls": {
+        "PrimaryUrl": "http://localhost:8080/",
+        "SecondaryUrl": "http://localhost:8080/display2",
+        "Demo": false
+      },
+      "Display": {
+        "Dual": true,
+        "UseSecondScreen": true,
+        "MainDisplayIndex": -1,
+        "MirrorDisplayIndex": -1,
+        "SingleScreenFallback": "SideBySide",
+        "WindowMode": "Borderless",
+        "UseWorkingArea": false,
+        "TreatDuplicatedAsSingleScreen": true,
+        "HideCursor": true,
+        "AllowExitShortcut": true
+      },
+      "Retry": {
+        "Enabled": true,
+        "IntervalSeconds": 5,
+        "ShowErrorPage": true,
+        "ProbeTimeoutSeconds": 5
+      },
+      "BlazorHost": {
+        "Enabled": false,
+        "ExecutablePath": null,
+        "ExecutableName": "StockTvBlazor",
+        "SearchRoot": null,
+        "Arguments": null,
+        "WorkingDirectory": null,
+        "Environment": {},
+        "StopExistingInstance": false,
+        "UrlProbeTimeoutSeconds": 5,
+        "Ports": [
+          4747,
+          4748
+        ],
+        "ReadinessTimeoutSeconds": 60,
+        "ShutdownWithKiosk": true,
+        "LogDirectory": "_logs"
+      },
+      "RestApi": {
+        "Enabled": true,
+        "BindAddress": "0.0.0.0",
+        "Port": 8099,
+        "ApiKey": "",
+        "ApiKeyHeader": "X-Api-Key",
+        "SwaggerEnabled": true,
+        "SwaggerRoute": "swagger"
+      },
+      "Power": {
+        "Mode": "Auto",
+        "RebootCommand": null,
+        "RebootArguments": null,
+        "ShutdownCommand": null,
+        "ShutdownArguments": null,
+        "DefaultDelaySeconds": 0,
+        "MaxDelaySeconds": 3600,
+        "CommandTimeoutSeconds": 15
+      },
+      "DisplayControl": {
+        "Mode": "Auto",
+        "DuplicateCommand": null,
+        "DuplicateArguments": null,
+        "ExtendCommand": null,
+        "ExtendArguments": null,
+        "PrimaryOutput": null,
+        "SecondaryOutput": null,
+        "ExtendDirection": "RightOf",
+        "UseDisplaySwitchFallback": true,
+        "ReapplyLayoutAfterSwitch": true,
+        "SettleDelayMilliseconds": 1500,
+        "CommandTimeoutSeconds": 20
+      }
+    }
+  }
+}
+
