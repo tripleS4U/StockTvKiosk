@@ -26,7 +26,12 @@ MODE="service"
 INSTALL_DIR="/opt/stocktvapps"
 PORT="8080"
 KIOSK_API_PORT="8099"
-API_KEY=""
+# Vorbelegt, damit alle Geraete gleich eingerichtet sind. Der Preis: wer ihn von einem
+# Geraet kennt, kommt auf alle - eine Huerde gegen versehentliche Zugriffe, kein
+# Geraeteschutz. Pro Geraet aendern mit --generate-api-key, --api-key oder spaeter ueber
+# POST /api/config/api-key.
+API_KEY="Secret4StockTV?"
+GENERATE_API_KEY="false"
 BAHN=""
 DISPLAY_NAME=":0"
 NO_KIOSK="false"
@@ -45,7 +50,8 @@ Optionen:
   --install-dir <Pfad>      Zielverzeichnis (Vorgabe /opt/stocktvapps)
   --port <N>                HTTP-Port von StockTV (Vorgabe 8080)
   --api-port <N>            Port der Kiosk-Fernsteuerung (Vorgabe 8099)
-  --api-key <Wert>          Schluessel der Fernsteuerung; ohne Angabe wird einer erzeugt
+  --api-key <Wert>          Schluessel der Fernsteuerung (Vorgabe: fest vorbelegt)
+  --generate-api-key        Statt des vorbelegten einen zufaelligen Schluessel erzeugen
   --bahn <N>                Bahnnummer in die StockTV-Konfiguration eintragen
   --display <:N>            X-Display fuer den Kiosk (Vorgabe :0)
   --no-kiosk                Dateien kopieren, aber keine Kiosk-Unit einrichten
@@ -64,6 +70,7 @@ while [ $# -gt 0 ]; do
         --port)        PORT="${2:?--port braucht einen Wert}"; shift 2 ;;
         --api-port)    KIOSK_API_PORT="${2:?--api-port braucht einen Wert}"; shift 2 ;;
         --api-key)     API_KEY="${2:?--api-key braucht einen Wert}"; shift 2 ;;
+        --generate-api-key) GENERATE_API_KEY="true"; shift ;;
         --bahn)        BAHN="${2:?--bahn braucht eine Zahl}"; shift 2 ;;
         --display)     DISPLAY_NAME="${2:?--display braucht einen Wert}"; shift 2 ;;
         --no-kiosk)    NO_KIOSK="true"; shift ;;
@@ -243,7 +250,7 @@ title "5. Konfiguration"
 # ---------------------------------------------------------------------------------------
 
 GENERATED_KEY="false"
-if [ -z "$API_KEY" ]; then
+if [ "$GENERATE_API_KEY" = "true" ] || [ -z "$API_KEY" ]; then
     API_KEY="$(head -c 24 /dev/urandom | base64)"
     GENERATED_KEY="true"
 fi
@@ -387,9 +394,21 @@ if [ -n "$API_KEY" ]; then
     cat <<EOF
 
   API-Schluessel: ${API_KEY}
+EOF
+
+    if [ "$GENERATED_KEY" = "true" ]; then
+        cat <<EOF
   Jetzt notieren - nach dem ersten Start des Kiosks steht er nur noch
   verschluesselt in der Datei und laesst sich nicht mehr ablesen.
 EOF
+    else
+        cat <<EOF
+  Das ist der vorbelegte Schluessel - auf allen so eingerichteten Geraeten derselbe.
+  Pro Geraet aendern:
+    curl -X POST -H "X-Api-Key: ${API_KEY}" -H "Content-Type: application/json" \\
+         -d '{"newKey":"..."}' http://localhost:${KIOSK_API_PORT}/api/config/api-key
+EOF
+    fi
 fi
 
 if [ "$MODE" = "service" ] && [ "$DRY_RUN" != "true" ]; then

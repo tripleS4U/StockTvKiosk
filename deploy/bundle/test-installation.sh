@@ -13,7 +13,8 @@
 set -uo pipefail
 
 INSTALL_DIR="/opt/stocktvapps"
-API_KEY=""
+# Vorbelegt wie in der Installation, siehe --api-key dort.
+API_KEY="Secret4StockTV?"
 TIMEOUT="10"
 
 while [ $# -gt 0 ]; do

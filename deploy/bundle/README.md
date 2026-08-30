@@ -155,7 +155,8 @@ Installationsskript selbst.
 | `--install-dir <Pfad>` | `/opt/stocktvapps` | Zielverzeichnis |
 | `--port <N>` | `8080` | HTTP-Port von StockTV |
 | `--api-port <N>` | `8099` | Port der Kiosk-Fernsteuerung |
-| `--api-key <Wert>` | *(erzeugt)* | Schluessel der Fernsteuerung |
+| `--api-key <Wert>` | `Secret4StockTV?` | Schluessel der Fernsteuerung |
+| `--generate-api-key` | | stattdessen einen zufaelligen erzeugen |
 | `--bahn <N>` | *(Vorlage)* | Bahnnummer |
 | `--display <:N>` | `:0` | X-Display fuer den Kiosk |
 | `--no-kiosk` | | keine Kiosk-Unit einrichten |
@@ -254,7 +255,8 @@ Install-StockTV.cmd -ResetConfig
 | `-InstallDir` | `C:\StockTvApps` | die beiden Anwendungen landen darunter in `StockTV\` und `StockTvKiosk\` |
 | `-Port` | `8080` | HTTP-Port von StockTV, wird in beide Konfigurationen eingesetzt |
 | `-KioskApiPort` | `8099` | Port der Kiosk-Fernsteuerung |
-| `-ApiKey` | *(erzeugt)* | Schluessel der Fernsteuerung |
+| `-ApiKey` | `Secret4StockTV?` | Schluessel der Fernsteuerung |
+| `-GenerateApiKey` | | stattdessen einen zufaelligen erzeugen |
 | `-BahnNummer` | *(Vorlage)* | traegt die Bahnnummer in die StockTV-Konfiguration ein |
 | `-NoKiosk` | | Dateien kopieren, aber keinen Autostart einrichten |
 | `-SkipFirewall` | | keine Firewall-Regeln anlegen (sonst automatisch, sofern Administrator) |
@@ -263,9 +265,31 @@ Install-StockTV.cmd -ResetConfig
 | `-WhatIfOnly` | | nur anzeigen |
 
 > **Vorhandene Konfigurationsdateien werden nicht ueberschrieben.** Ein Update laesst
-> Bahnnummer, Farben und den API-Schluessel damit stehen. Genau deshalb wird der Schluessel
-> auch nur bei der Erstinstallation genannt — danach steht er verschluesselt in der Datei
-> und ist nicht mehr ablesbar.
+> Bahnnummer, Farben und den API-Schluessel damit stehen.
+
+### Der API-Schluessel
+
+Vorbelegt mit **`Secret4StockTV?`**, auf allen so eingerichteten Geraeten derselbe. Das ist
+Absicht — niemand muss pro Geraet einen Wert nachhalten. Der Preis: wer ihn von einem Geraet
+kennt, kommt auf alle, und ueber `PUT /api/config` liesse sich dort ein beliebiger Befehl
+hinterlegen. Er ist damit eine Huerde gegen versehentliche Zugriffe, kein Geraeteschutz. In
+einem abgeschotteten Hallennetz vertretbar, in einem geteilten nicht.
+
+Je Geraet einen eigenen Schluessel:
+
+```
+Install-StockTV.cmd -GenerateApiKey          :: Windows
+./install-stocktv.sh --generate-api-key      #  Linux
+```
+
+Oder nachtraeglich im laufenden Betrieb, ohne Neustart:
+
+```bash
+curl -X POST -H "X-Api-Key: Secret4StockTV?" -H "Content-Type: application/json" \
+     -d '{"newKey":"neuer-schluessel"}' http://kiosk:8099/api/config/api-key
+```
+
+Der neue gilt ab der Antwort, der bisherige ist damit ungueltig.
 
 ---
 

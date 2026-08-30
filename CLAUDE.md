@@ -119,6 +119,14 @@ Wenn nur ein Bildschirm erkannt wird, öffnet die App nur ein Fenster mit der Pr
   (`?keepRestApi=false` setzt auch die zurück). Die bisherige Fassung landet als `.bak`.
   Zu beachten: wer hochladen darf, kann `Power.RebootCommand` frei belegen — der API-Schlüssel
   ist damit Vollzugriff auf das Gerät.
+- **API-Schlüssel:** Die Installation belegt ihn mit `Secret4StockTV?` vor — auf allen
+  Geräten derselbe, damit niemand pro Gerät einen Wert nachhalten muss (Entscheidung vom
+  30.08.2026). Das ist bewusst eine Hürde gegen versehentliche Zugriffe und **kein**
+  Geräteschutz: wer ihn von einem Gerät kennt, kommt auf alle und kann über
+  `PUT /api/config` beliebige Befehle hinterlegen. Je Gerät eigene Schlüssel gibt es mit
+  `-GenerateApiKey` / `--generate-api-key`, nachträglich über `POST /api/config/api-key`.
+  Der Wechsel wirkt sofort — die Prüfung liest den Schlüssel bei jeder Anfrage neu, statt
+  ihn beim Start zu merken.
 - **Absicherung:** Standard ist `0.0.0.0:8099` mit `ApiKey` als Pflicht. Fehlt der Schlüssel
   bei einer nicht-Loopback-Bindung, startet die Schnittstelle gar nicht erst — sonst ginge ein
   Gerät mit offenem Neustart-Endpunkt ins Netz. Der Schlüssel liegt `[Secret]`-verschlüsselt

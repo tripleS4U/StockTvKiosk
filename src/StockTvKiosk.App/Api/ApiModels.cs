@@ -28,6 +28,16 @@ public sealed class PowerRequest
     public bool Force { get; set; }
 }
 
+/// <summary>Anforderung, den Schluessel der Fernsteuerung zu wechseln.</summary>
+public sealed class ApiKeyRequest
+{
+    /// <summary>
+    /// Der neue Schluessel. Mindestens 8 Zeichen; Leerzeichen am Rand werden entfernt, weil
+    /// sie sich beim Kopieren einschleichen und dann niemand den Fehler findet.
+    /// </summary>
+    public string? NewKey { get; set; }
+}
+
 /// <summary>Ein Bildschirm, wie ihn das Fenstersystem meldet.</summary>
 public sealed record ScreenResponse(
     int Index, int X, int Y, int Width, int Height, bool IsPrimary, double Scaling, string? Name)

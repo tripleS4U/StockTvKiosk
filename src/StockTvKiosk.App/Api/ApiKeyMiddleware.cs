@@ -16,17 +16,21 @@ namespace StockTvKiosk.App.Api;
 /// </remarks>
 internal sealed class ApiKeyMiddleware(RequestDelegate next, RestApiOptions options, ILogger<ApiKeyMiddleware> logger)
 {
-    private readonly byte[] _expected = Encoding.UTF8.GetBytes(options.ApiKey ?? string.Empty);
-
     public async Task InvokeAsync(HttpContext context)
     {
-        if (_expected.Length == 0 || IsExempt(context.Request.Path))
+        // Bei jeder Anfrage neu gelesen statt einmal beim Start: sonst gaelte nach
+        // POST /api/config/api-key bis zum Neustart weiterhin der alte Schluessel - und der
+        // neue nicht. Wer den Schluessel wechselt, will genau das nicht.
+        byte[] expected = Encoding.UTF8.GetBytes(options.ApiKey ?? string.Empty);
+
+        if (expected.Length == 0 || IsExempt(context.Request.Path))
         {
             await next(context);
             return;
         }
 
-        if (!context.Request.Headers.TryGetValue(options.ApiKeyHeader, out var provided) || !Matches(provided!))
+        if (!context.Request.Headers.TryGetValue(options.ApiKeyHeader, out var provided)
+            || !Matches(provided!, expected))
         {
             logger.LogWarning(
                 "Anfrage ohne gueltigen Schluessel abgewiesen: {Method} {Path} von {Remote}",
@@ -56,6 +60,6 @@ internal sealed class ApiKeyMiddleware(RequestDelegate next, RestApiOptions opti
     /// Zeitkonstanter Vergleich: ein normaler Stringvergleich bricht beim ersten
     /// abweichenden Zeichen ab und verraet ueber die Laufzeit, wie weit ein Versuch kam.
     /// </summary>
-    private bool Matches(string provided)
-        => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(provided), _expected);
+    private static bool Matches(string provided, byte[] expected)
+        => CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(provided), expected);
 }

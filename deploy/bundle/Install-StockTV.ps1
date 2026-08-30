@@ -80,8 +80,18 @@ param(
     [ValidateRange(1, 65535)]
     [int]$KioskApiPort = 8099,
 
-    # Schluessel der Kiosk-Fernsteuerung. Ohne Angabe wird einer erzeugt und am Ende genannt.
-    [string]$ApiKey,
+    <#
+        Schluessel der Kiosk-Fernsteuerung. Vorbelegt, damit alle Geraete gleich
+        eingerichtet sind und niemand pro Geraet einen Wert nachhalten muss.
+
+        Der Preis dafuer: wer ihn von einem Geraet kennt, kommt auf alle. Er ist damit eine
+        Huerde gegen versehentliche Zugriffe, kein Geraeteschutz. Pro Geraet aendern geht
+        mit -GenerateApiKey, mit -ApiKey oder spaeter ueber POST /api/config/api-key.
+    #>
+    [string]$ApiKey = "Secret4StockTV?",
+
+    # Statt des vorbelegten einen zufaelligen Schluessel erzeugen.
+    [switch]$GenerateApiKey,
 
     # Traegt die Bahnnummer in die StockTV-Konfiguration ein. 0 = Vorlage unveraendert lassen.
     [int]$BahnNummer = 0,
@@ -292,7 +302,7 @@ foreach ($helper in @("Install-KioskTask.ps1", "Uninstall-KioskTask.ps1", "Test-
 Title "4. Konfiguration"
 
 $generatedKey = $false
-if (-not $ApiKey) {
+if ($GenerateApiKey -or -not $ApiKey) {
     # Bewusst ueber Create() und die Instanzmethode: das statische GetBytes(int) gibt es
     # erst ab .NET 6, und dieses Skript laeuft ueblicherweise in Windows PowerShell 5.1
     # auf dem .NET Framework.
@@ -609,8 +619,17 @@ Write-Host "  Fernsteuerung  http://$($env:COMPUTERNAME):$KioskApiPort/swagger"
 if ($ApiKey) {
     Write-Host ""
     Write-Host "  API-Schluessel: $ApiKey" -ForegroundColor Yellow
-    Write-Host "  Jetzt notieren - nach dem ersten Start des Kiosks steht er nur noch" -ForegroundColor Yellow
-    Write-Host "  verschluesselt in der Datei und laesst sich nicht mehr ablesen." -ForegroundColor Yellow
+
+    if ($generatedKey) {
+        Write-Host "  Jetzt notieren - nach dem ersten Start des Kiosks steht er nur noch" -ForegroundColor Yellow
+        Write-Host "  verschluesselt in der Datei und laesst sich nicht mehr ablesen." -ForegroundColor Yellow
+    }
+    else {
+        Write-Host "  Das ist der vorbelegte Schluessel - auf allen so eingerichteten Geraeten" -ForegroundColor Yellow
+        Write-Host "  derselbe. Pro Geraet aendern:" -ForegroundColor Yellow
+        Write-Host "    curl -X POST -H `"X-Api-Key: $ApiKey`" -H `"Content-Type: application/json`" ``" -ForegroundColor Yellow
+        Write-Host "         -d '{\`"newKey\`":\`"...\`"}' http://localhost:$KioskApiPort/api/config/api-key" -ForegroundColor Yellow
+    }
 }
 
 if ($warnings.Count -gt 0) {

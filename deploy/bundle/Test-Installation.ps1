@@ -47,7 +47,9 @@
 param(
     [string]$InstallDir = "C:\StockTvApps",
     [string]$ServiceName = "StockTV",
-    [string]$ApiKey,
+    # Vorbelegt wie in der Installation - so prueft der Aufruf ohne Argumente auch den
+    # Schluessel. Bei einem eigenen Schluessel diesen mit -ApiKey uebergeben.
+    [string]$ApiKey = "Secret4StockTV?",
     [int]$TimeoutSeconds = 10
 )
 

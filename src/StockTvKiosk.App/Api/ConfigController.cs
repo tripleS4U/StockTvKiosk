@@ -124,6 +124,77 @@ public sealed class ConfigController(ILogger<ConfigController> logger) : Control
         }
     }
 
+    /// <summary>
+    /// Wechselt den Schluessel der Fernsteuerung. Der neue gilt sofort - der bisherige ab
+    /// dieser Antwort nicht mehr.
+    /// </summary>
+    /// <remarks>
+    /// Geschrieben wird die gesamte laufende Konfiguration. Wurde seit dem Start eine Datei
+    /// ueber <c>PUT /api/config</c> hochgeladen, aber noch nicht neu gestartet, gewinnt hier
+    /// der Stand aus dem Arbeitsspeicher. In der Reihenfolge hochladen - neu starten -
+    /// Schluessel wechseln kommt das nicht vor.
+    /// </remarks>
+    /// <param name="request">Der neue Schluessel.</param>
+    [HttpPost("api-key")]
+    [ProducesResponseType<ActionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<ActionResponse>(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType<ActionResponse>(StatusCodes.Status500InternalServerError)]
+    public IActionResult ChangeApiKey([FromBody] ApiKeyRequest? request)
+    {
+        string newKey = (request?.NewKey ?? string.Empty).Trim();
+
+        if (newKey.Length == 0)
+            return Reject("Es wurde kein neuer Schluessel uebergeben (Feld newKey).");
+
+        if (newKey.Length < MinimumApiKeyLength)
+        {
+            return Reject(
+                $"Der Schluessel ist zu kurz - mindestens {MinimumApiKeyLength} Zeichen. " +
+                "Er ist das Einzige, was zwischen dem Netz und dem Neustart-Endpunkt steht.");
+        }
+
+        var restApi = AppConfig.Instance.KioskOptions.RestApi;
+
+        if (string.Equals(newKey, restApi.ApiKey, StringComparison.Ordinal))
+            return Reject("Der neue Schluessel ist der bisherige.");
+
+        string previous = restApi.ApiKey;
+
+        try
+        {
+            // Erst in den laufenden Betrieb, dann auf die Platte: die Pruefung liest den
+            // Wert bei jeder Anfrage aus genau diesem Objekt.
+            restApi.ApiKey = newKey;
+            AppConfig.Save();
+        }
+        catch (Exception ex)
+        {
+            // Zuruecknehmen, sonst gaelte ein Schluessel, der nirgends steht - und nach dem
+            // naechsten Start kaeme niemand mehr auf das Geraet.
+            restApi.ApiKey = previous;
+
+            logger.LogError(ex, "Der API-Schluessel konnte nicht gespeichert werden.");
+
+            return StatusCode(StatusCodes.Status500InternalServerError, new ActionResponse(
+                "Failed",
+                "Der Schluessel konnte nicht gespeichert werden und bleibt unveraendert.",
+                ex.Message));
+        }
+
+        logger.LogWarning("Der API-Schluessel wurde ueber die Schnittstelle gewechselt.");
+
+        return Ok(new ActionResponse(
+            "Ok",
+            "Der Schluessel gilt ab sofort. Der bisherige ist damit ungueltig.",
+            $"Verschluesselt abgelegt in {AppConfig.GetConfigFullName()}"));
+    }
+
+    /// <summary>
+    /// Kurz genug zum Eintippen, lang genug, dass Durchprobieren keine Aussicht hat. Wer es
+    /// genauer will, nimmt einen erzeugten Schluessel.
+    /// </summary>
+    private const int MinimumApiKeyLength = 8;
+
     private BadRequestObjectResult Reject(string message)
         => BadRequest(new ActionResponse("InvalidRequest", message, null));
 }

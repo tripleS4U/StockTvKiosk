@@ -208,6 +208,7 @@ Bedienoberflaeche: **`http://<geraet>:8099/swagger`**
 | `GET` | `/api/config` | Konfigurationsdatei herunterladen |
 | `PUT` | `/api/config` | Konfigurationsdatei ersetzen (Datei-Upload) |
 | `POST` | `/api/config/default` | Konfigurationsdatei mit Standardwerten neu anlegen |
+| `POST` | `/api/config/api-key` | Schluessel der Fernsteuerung wechseln, `{ "newKey": "…" }` |
 | `POST` | `/api/kiosk/reload` | Blazor-Seiten neu laden |
 | `POST` | `/api/kiosk/relayout` | Nur die Fenster neu anordnen |
 
@@ -257,6 +258,24 @@ Schluessel eintragen: bei stehendem Kiosk `KioskOptions > RestApi > ApiKey` in
 verschluesselt zurueckgeschrieben (`"ApiKey": "enc:…"`) und ist danach nicht mehr im
 Klartext lesbar. Das ist Verschleierung gegen versehentliches Mitlesen, kein Schutz vor
 jemandem, der Datei **und** Programm hat.
+
+Im laufenden Betrieb geht es ohne Dateizugriff und ohne Neustart:
+
+```bash
+curl -X POST -H "X-Api-Key: $KEY" -H "Content-Type: application/json" \
+     -d '{"newKey":"neuer-schluessel"}' http://kiosk:8099/api/config/api-key
+```
+
+Der neue Schluessel gilt ab der Antwort, der bisherige ist damit ungueltig — die Pruefung
+liest ihn bei jeder Anfrage neu. Mindestens acht Zeichen. Schlaegt das Speichern fehl,
+bleibt der alte gueltig; ein Schluessel, der nur im Arbeitsspeicher steht, waere nach dem
+naechsten Start verloren und niemand kaeme mehr auf das Geraet.
+
+> Die Installation belegt den Schluessel mit **`Secret4StockTV?`** vor, damit alle Geraete
+> gleich eingerichtet sind. Wer ihn von einem Geraet kennt, kommt damit auf alle — er ist
+> eine Huerde gegen versehentliche Zugriffe, kein Geraeteschutz. Fuer je Geraet eigene
+> Schluessel: `-GenerateApiKey` bzw. `--generate-api-key` bei der Installation, oder
+> nachtraeglich der Aufruf oben.
 
 > Die Swagger-Oberflaeche bleibt ohne Schluessel erreichbar, damit sie sich ueberhaupt
 > oeffnen laesst — der Schluessel wird dort oben rechts unter *Authorize* eingetragen.
