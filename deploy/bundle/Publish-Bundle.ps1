@@ -188,7 +188,11 @@ Copy-Item (Join-Path $BundleDir "config\*") $configOut -Force
 Copy-Item (Join-Path $BundleDir "README.md") $OutputRoot -Force
 
 if ($isWindowsTarget) {
-    foreach ($script in @("Install-StockTV.ps1", "Test-Installation.ps1")) {
+    # Die .cmd-Starter rufen die Skripte mit -ExecutionPolicy Bypass auf. Ohne sie
+    # braeuchte es auf einem frischen Windows erst ein systemweites
+    # Set-ExecutionPolicy RemoteSigned - fuer eine einmalige Installation zu viel.
+    foreach ($script in @("Install-StockTV.ps1", "Install-StockTV.cmd",
+                          "Test-Installation.ps1", "Test-Installation.cmd")) {
         Copy-Item (Join-Path $BundleDir $script) $OutputRoot -Force
     }
 

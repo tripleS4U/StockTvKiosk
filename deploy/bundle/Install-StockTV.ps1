@@ -41,11 +41,10 @@
     wird in die StockTV-Konfiguration eingetragen.
 
 .EXAMPLE
-    .\Install-StockTV.ps1 -BahnNummer 5 -OpenFirewall
+    .\Install-StockTV.ps1 -BahnNummer 5 -SkipFirewall
 
-    Wie die Erstinstallation, zusaetzlich mit eingehenden Firewall-Regeln fuer StockTV
-    (8080) und die Kiosk-Fernsteuerung (8099), damit Handys und Tablets im Netz
-    herankommen.
+    Ohne Firewall-Regeln - etwa wenn eine Gruppenrichtlinie sie ohnehin verteilt. Sonst
+    werden sie angelegt, sobald die Installation Administratorrechte hat.
 
 .EXAMPLE
     .\Install-StockTV.ps1 -Port 5129 -ApiKey "eigener-schluessel"
@@ -70,7 +69,8 @@ param(
     [ValidateSet("Service", "Managed")]
     [string]$Mode = "Service",
 
-    [string]$SourceDir = $PSScriptRoot,
+    # Vorbelegung steht bewusst NICHT hier, siehe unten.
+    [string]$SourceDir,
 
     [string]$InstallDir = "C:\StockTvApps",
 
@@ -91,8 +91,12 @@ param(
     # Den Kiosk nicht als geplanten Task registrieren; die Dateien werden trotzdem kopiert.
     [switch]$NoKiosk,
 
-    # Eingehende Firewall-Regeln fuer StockTV und die Kiosk-Fernsteuerung anlegen.
-    [switch]$OpenFirewall,
+    <#
+        Die Firewall-Regeln werden von sich aus angelegt, sobald die Installation
+        Administratorrechte hat - ohne sie fragt Windows beim ersten Start jeder Anwendung
+        nach, mitten auf dem Kiosk-Bildschirm. Dieser Schalter laesst sie aus.
+    #>
+    [switch]$SkipFirewall,
 
     # Vorhandene Konfigurationsdateien durch die Vorlagen ersetzen.
     [switch]$ResetConfig,
@@ -104,6 +108,14 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+<#
+    $SourceDir wird erst hier vorbelegt und nicht im param-Block. In einem Skript mit
+    [CmdletBinding()] ist $PSScriptRoot als Parametervorgabe leer, wenn das Skript ueber
+    "powershell.exe -File" laeuft - genau so ruft der .cmd-Starter es auf. Im Rumpf steht
+    der Wert dagegen in jeder Aufrufart.
+#>
+if (-not $SourceDir) { $SourceDir = $PSScriptRoot }
 
 # Beide Anwendungen bekommen ihr eigenes Verzeichnis unter InstallDir. Nebeneinander in
 # einem Ordner ginge nicht: sie lesen ihre Konfiguration jeweils aus einem _config neben
@@ -198,10 +210,6 @@ if ($Mode -eq "Service" -and -not $isAdmin) {
     throw "Fuer -Mode Service werden Administratorrechte gebraucht (Windows-Dienst). " +
           "PowerShell als Administrator starten oder -Mode Managed verwenden."
 }
-if ($OpenFirewall -and -not $isAdmin) {
-    throw "Fuer -OpenFirewall werden Administratorrechte gebraucht."
-}
-
 Step $(if ($isAdmin) { "Laeuft als Administrator." } else { "Laeuft ohne erhoehte Rechte - fuer $Mode ausreichend." })
 
 if ($WhatIfOnly) {
@@ -527,19 +535,60 @@ else {
 
 Title "8. Firewall"
 
-if (-not $OpenFirewall) {
-    Step "Uebersprungen. Mit -OpenFirewall werden die Regeln angelegt (Administrator)."
+<#
+    Ohne diese Regeln fragt Windows beim ersten Start jeder der beiden Anwendungen nach -
+    ein Dialog mitten auf dem Kiosk-Bildschirm, den niemand wegklickt, und bis dahin kommt
+    aus dem Netz niemand heran.
+
+    Massgeblich sind die Regeln fuer die ANWENDUNGEN: sie decken alles ab, was die beiden
+    oeffnen, und genau sie unterdruecken die Rueckfrage. Die Portregeln kommen dazu, damit
+    in der Firewall-Uebersicht steht, worum es geht - und fuer den Fall, dass die
+    Programmdatei spaeter woanders liegt.
+#>
+$firewallRules = @(
+    @{ Name = "StockTV (Anwendung)";       Program = $stockTvExe }
+    @{ Name = "StockTV-Kiosk (Anwendung)"; Program = $kioskExe }
+
+    # HTTP der Bedienoberflaeche, NetMQ zu den Anzeigen, Fernsteuerung des Kiosks.
+    @{ Name = "StockTV (TCP)";      Protocol = "TCP"; Ports = @($Port, 4747, 4748) }
+    @{ Name = "StockTV-Kiosk (TCP)"; Protocol = "TCP"; Ports = @($KioskApiPort) }
+
+    # Geraetesuche im Netz. UDP, und ohne sie findet die Gegenstelle den Rechner nicht.
+    @{ Name = "StockTV (mDNS)";     Protocol = "UDP"; Ports = @(5353) }
+)
+
+if ($SkipFirewall) {
+    Step "Uebersprungen (-SkipFirewall)."
+}
+elseif (-not $isAdmin) {
+    Warn ("Ohne Administratorrechte lassen sich keine Firewall-Regeln anlegen. Windows " +
+          "fragt dann beim ersten Start jeder Anwendung nach, und aus dem Netz kommt bis " +
+          "dahin niemand heran. Nachholen: die Installation einmal als Administrator " +
+          "starten, oder -SkipFirewall setzen, wenn das gewollt ist.")
 }
 else {
-    foreach ($rule in @(
-        @{ Name = "StockTV ($Port)";              Port = $Port }
-        @{ Name = "StockTV-Kiosk ($KioskApiPort)"; Port = $KioskApiPort }
-    )) {
+    foreach ($rule in $firewallRules) {
         if ($WhatIfOnly) { Step "wuerde Regel '$($rule.Name)' anlegen"; continue }
 
+        # Erst weg, dann neu: sonst sammeln sich bei jedem Update Dubletten an.
         Remove-NetFirewallRule -DisplayName $rule.Name -ErrorAction SilentlyContinue
-        New-NetFirewallRule -DisplayName $rule.Name -Direction Inbound -Protocol TCP `
-            -LocalPort $rule.Port -Action Allow -Profile Any | Out-Null
+
+        $arguments = @{
+            DisplayName = $rule.Name
+            Direction   = "Inbound"
+            Action      = "Allow"
+            Profile     = "Any"
+        }
+
+        if ($rule.Program) {
+            $arguments.Program = $rule.Program
+        }
+        else {
+            $arguments.Protocol  = $rule.Protocol
+            $arguments.LocalPort = $rule.Ports
+        }
+
+        New-NetFirewallRule @arguments | Out-Null
         Step "Regel '$($rule.Name)' angelegt."
     }
 }

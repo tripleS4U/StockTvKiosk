@@ -196,6 +196,31 @@ if [ -n "$KIOSK_PORT" ] && [ -n "$EXPECTED_PORT" ]; then
 fi
 
 # ---------------------------------------------------------------------------------------
+# Firewall
+# ---------------------------------------------------------------------------------------
+
+# Raspberry Pi OS bringt keine aktive Firewall mit. Ist ufw eingeschaltet, muessen die
+# Ports aber durch - und von hier aus faellt das sonst nicht auf: die HTTP-Pruefungen
+# weiter unten laufen ueber localhost und merken von einer Sperre nichts.
+if ! command -v ufw >/dev/null 2>&1; then
+    result "Firewall" "ufw" "OK" "nicht vorhanden - nichts zu sperren"
+elif ! ufw status 2>/dev/null | head -n1 | grep -q "active"; then
+    result "Firewall" "ufw" "OK" "nicht aktiv - nichts zu sperren"
+else
+    UFW_RULES="$(ufw status 2>/dev/null || true)"
+    BLOCKED=""
+    for spec in "${KIOSK_PORT:-8080}/tcp" "4747/tcp" "4748/tcp" "${KIOSK_API_PORT:-8099}/tcp" "5353/udp"; do
+        printf '%s' "$UFW_RULES" | grep -q "${spec%%/*}" || BLOCKED="${BLOCKED} ${spec}"
+    done
+
+    if [ -z "$BLOCKED" ]; then
+        result "Firewall" "ufw" "OK" "alle Ports freigegeben"
+    else
+        result "Firewall" "ufw" "FEHLER" "aktiv, aber nicht freigegeben:${BLOCKED}"
+    fi
+fi
+
+# ---------------------------------------------------------------------------------------
 # Netz
 # ---------------------------------------------------------------------------------------
 

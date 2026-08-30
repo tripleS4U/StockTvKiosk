@@ -161,12 +161,14 @@ Installationsskript selbst.
 | `--no-kiosk` | | keine Kiosk-Unit einrichten |
 | `--reset-config` | | Konfiguration auf die Vorlagen zuruecksetzen |
 | `--skip-deps` | | WebKitGTK nicht pruefen |
+| `--skip-firewall` | | `ufw` nicht anfassen |
 | `--dry-run` | | nur anzeigen |
 
-Eingerichtet werden **systemd-User-Units** (`~/.config/systemd/user/`), kein `sudo` noetig —
-der Kiosk braucht ohnehin die grafische Sitzung des angemeldeten Benutzers. `sudo` kommt nur
-dort zum Einsatz, wo das Zielverzeichnis dem Benutzer nicht gehoert (`/opt`) und um
-WebKitGTK nachzuinstallieren.
+Eingerichtet werden **systemd-User-Units** (`~/.config/systemd/user/`) — der Kiosk braucht
+ohnehin die grafische Sitzung des angemeldeten Benutzers. `sudo` kommt nur an drei Stellen
+zum Einsatz: wenn das Zielverzeichnis dem Benutzer nicht gehoert (`/opt`), zum
+Nachinstallieren von WebKitGTK, und fuer `ufw`. Installiert man nach `~/`, fragt gar nichts
+nach dem Passwort.
 
 > **X11 statt Wayland.** Auf Raspberry Pi OS Bookworm laeuft der Desktop standardmaessig
 > unter Wayland; dort bestimmt der Compositor die Fensterposition, und die Zuordnung auf
@@ -177,17 +179,45 @@ WebKitGTK nachzuinstallieren.
 
 ## Installieren (Zielrechner)
 
-Ordner kopieren, PowerShell darin oeffnen, und:
+Ordner kopieren, dann als **Administrator**:
 
-```powershell
-.\Install-StockTV.ps1
+```
+Install-StockTV.cmd
 ```
 
 Vorher ansehen, was geschehen wuerde:
 
-```powershell
-.\Install-StockTV.ps1 -WhatIfOnly
 ```
+Install-StockTV.cmd -WhatIfOnly
+```
+
+Der `.cmd`-Starter ruft das PowerShell-Skript mit `-ExecutionPolicy Bypass` auf. Damit
+entfaellt das sonst noetige
+
+```powershell
+Set-ExecutionPolicy RemoteSigned
+```
+
+— eine systemweite Aenderung fuer eine einmalige Installation. Der Umweg erledigt nebenbei
+die Kennzeichnung „aus dem Internet", die Dateien mitbringen, wenn das Paket ueber ein
+Netzlaufwerk oder ein ZIP kam; ohne sie verweigert selbst `RemoteSigned` den Dienst.
+
+Wer die Policy ohnehin gesetzt hat, kann `.\Install-StockTV.ps1` direkt aufrufen — die
+Parameter sind dieselben.
+
+### Warum Administrator
+
+| | braucht Administrator |
+|---|---|
+| Windows-Dienst anlegen (`-Mode Service`) | ja |
+| **Firewall-Regeln** | ja |
+| Dateien nach `C:\StockTvApps` | nein |
+| Geplanter Task fuer den Kiosk | nein |
+
+Ohne Administratorrechte laeuft `-Mode Managed` vollstaendig durch, nur die Firewall bleibt
+offen — und dann fragt Windows beim ersten Start **jeder der beiden Anwendungen** nach.
+Dieser Dialog erscheint mitten auf dem Kiosk-Bildschirm, und bis ihn jemand wegklickt kommt
+aus dem Netz niemand an die Bedienoberflaeche.
 
 ### Zwei Betriebsarten
 
@@ -204,18 +234,18 @@ wenn niemand Administratorrechte auf dem Geraet hat.
 
 ### Haeufige Aufrufe
 
-```powershell
-# Erstinstallation mit Bahnnummer und Firewall-Freigabe
-.\Install-StockTV.ps1 -BahnNummer 3 -OpenFirewall
+```
+:: Erstinstallation mit Bahnnummer (Dienst, Task und Firewall inbegriffen)
+Install-StockTV.cmd -BahnNummer 3
 
-# Ohne Administratorrechte
-.\Install-StockTV.ps1 -Mode Managed
+:: Ohne Administratorrechte
+Install-StockTV.cmd -Mode Managed
 
-# Update: Programmdateien neu, Konfiguration bleibt wie sie ist
-.\Install-StockTV.ps1
+:: Update: Programmdateien neu, Konfiguration bleibt wie sie ist
+Install-StockTV.cmd
 
-# Update inklusive Konfiguration auf die Vorlagen zuruecksetzen
-.\Install-StockTV.ps1 -ResetConfig
+:: Update inklusive Konfiguration auf die Vorlagen zuruecksetzen
+Install-StockTV.cmd -ResetConfig
 ```
 
 | Parameter | Vorgabe | Bedeutung |
@@ -227,7 +257,7 @@ wenn niemand Administratorrechte auf dem Geraet hat.
 | `-ApiKey` | *(erzeugt)* | Schluessel der Fernsteuerung |
 | `-BahnNummer` | *(Vorlage)* | traegt die Bahnnummer in die StockTV-Konfiguration ein |
 | `-NoKiosk` | | Dateien kopieren, aber keinen Autostart einrichten |
-| `-OpenFirewall` | | eingehende Regeln fuer beide Ports (Administrator) |
+| `-SkipFirewall` | | keine Firewall-Regeln anlegen (sonst automatisch, sofern Administrator) |
 | `-ResetConfig` | | vorhandene Konfiguration durch die Vorlagen ersetzen |
 | `-SkipWebView2` | | die WebView2-Runtime nicht anfassen, auch wenn sie fehlt |
 | `-WhatIfOnly` | | nur anzeigen |
@@ -261,7 +291,7 @@ Kiosk-Konfiguration.
 
 ---
 
-## Adressen nach der Installation
+## Adressen und Ports
 
 | | |
 |---|---|
@@ -269,6 +299,19 @@ Kiosk-Konfiguration.
 | Zweite Anzeige | `http://localhost:8080/display2` |
 | Aus dem Netz | `http://<rechnername>:8080` |
 | Fernsteuerung des Kiosks | `http://<rechnername>:8099/swagger` |
+
+Belegt werden:
+
+| Port | Protokoll | Wofuer |
+|---|---|---|
+| `8080` | TCP | Bedienoberflaeche von StockTV (`-Port`) |
+| `4747`, `4748` | TCP | NetMQ zu den Anzeigegeraeten |
+| `5353` | UDP | Geraetesuche im Netz (mDNS) |
+| `8099` | TCP | Fernsteuerung des Kiosks (`-KioskApiPort`) |
+
+Die Installation gibt sie frei — unter Windows als Firewall-Regeln (fuer die beiden
+Anwendungen und fuer die Ports), unter Linux per `ufw`, sofern der aktiv ist. Raspberry Pi
+OS bringt von Haus aus keine eingeschaltete Firewall mit; dann ist nichts zu tun.
 
 Fuer den Zugriff aus dem Netz muss StockTV auf allen Adressen hoeren — die Installation
 setzt dafuer `ASPNETCORE_URLS=http://+:<port>`. In der Betriebsart `Managed` steht derselbe

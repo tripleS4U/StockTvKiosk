@@ -32,6 +32,7 @@ DISPLAY_NAME=":0"
 NO_KIOSK="false"
 RESET_CONFIG="false"
 SKIP_DEPS="false"
+SKIP_FIREWALL="false"
 DRY_RUN="false"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -50,6 +51,7 @@ Optionen:
   --no-kiosk                Dateien kopieren, aber keine Kiosk-Unit einrichten
   --reset-config            Vorhandene Konfiguration durch die Vorlagen ersetzen
   --skip-deps               Die WebKitGTK-Pakete nicht pruefen
+  --skip-firewall           ufw nicht anfassen
   --dry-run                 Nur anzeigen, was geschehen wuerde
   -h, --help                Diese Hilfe
 EOF
@@ -67,6 +69,7 @@ while [ $# -gt 0 ]; do
         --no-kiosk)    NO_KIOSK="true"; shift ;;
         --reset-config) RESET_CONFIG="true"; shift ;;
         --skip-deps)   SKIP_DEPS="true"; shift ;;
+        --skip-firewall) SKIP_FIREWALL="true"; shift ;;
         --dry-run)     DRY_RUN="true"; shift ;;
         -h|--help)     usage; exit 0 ;;
         *) echo "Unbekannte Option: $1" >&2; usage >&2; exit 2 ;;
@@ -105,6 +108,12 @@ fi
 
 maybe_sudo() {
     if [ "$NEED_SUDO" = "true" ]; then sudo "$@"; else "$@"; fi
+}
+
+# Paketverwaltung und Firewall brauchen root, ganz gleich wohin installiert wird - dafuer
+# taugt maybe_sudo nicht, das sich nach dem Zielverzeichnis richtet.
+run_root() {
+    if [ "$(id -u)" -eq 0 ]; then "$@"; else sudo "$@"; fi
 }
 
 printf '==========================================\n'
@@ -165,7 +174,7 @@ else
         step "wuerde nachinstallieren:${MISSING}"
     else
         step "Fehlt:${MISSING} - wird nachinstalliert."
-        if maybe_sudo apt-get install -y ${MISSING}; then
+        if run_root apt-get install -y ${MISSING}; then
             step "Nachinstalliert."
         else
             warn "Die Pakete${MISSING} liessen sich nicht installieren. Der Kiosk zeigt ohne sie nichts an."
@@ -334,7 +343,33 @@ else
 fi
 
 # ---------------------------------------------------------------------------------------
-title "7. Zusammenfassung"
+title "7. Firewall"
+# ---------------------------------------------------------------------------------------
+
+# Raspberry Pi OS bringt keine aktive Firewall mit. Ist ufw da und eingeschaltet, muessen
+# die Ports aber durch - sonst kommt aus dem Netz niemand an die Bedienoberflaeche.
+if [ "$SKIP_FIREWALL" = "true" ]; then
+    step "Uebersprungen (--skip-firewall)."
+elif ! command -v ufw >/dev/null 2>&1; then
+    step "Kein ufw vorhanden - auf diesem System ist nichts freizugeben."
+elif ! ufw status 2>/dev/null | head -n1 | grep -q "active"; then
+    step "ufw ist nicht aktiv - nichts freizugeben."
+else
+    #  8080/tcp  Bedienoberflaeche   4747,4748/tcp  NetMQ zu den Anzeigen
+    #  8099/tcp  Kiosk-Fernsteuerung 5353/udp       Geraetesuche (mDNS)
+    for spec in "${PORT}/tcp" "4747/tcp" "4748/tcp" "${KIOSK_API_PORT}/tcp" "5353/udp"; do
+        if [ "$DRY_RUN" = "true" ]; then
+            step "wuerde freigeben: ${spec}"
+        elif run_root ufw allow "$spec" >/dev/null 2>&1; then
+            step "Freigegeben: ${spec}"
+        else
+            warn "Port ${spec} liess sich nicht freigeben - von Hand: sudo ufw allow ${spec}"
+        fi
+    done
+fi
+
+# ---------------------------------------------------------------------------------------
+title "8. Zusammenfassung"
 # ---------------------------------------------------------------------------------------
 
 CURRENT_USER="${USER:-$(id -un)}"

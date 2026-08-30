@@ -283,6 +283,31 @@ else {
 }
 
 # ---------------------------------------------------------------------------------------
+# Firewall
+# ---------------------------------------------------------------------------------------
+
+<#
+    Fehlen die Regeln, fragt Windows beim ersten Start jeder Anwendung nach - ein Dialog
+    mitten auf dem Kiosk-Bildschirm, den niemand wegklickt. Bis dahin kommt aus dem Netz
+    niemand heran, und von hier aus sieht trotzdem alles in Ordnung aus: die
+    HTTP-Pruefungen weiter unten laufen ueber localhost und merken davon nichts.
+#>
+foreach ($ruleName in @("StockTV (Anwendung)", "StockTV-Kiosk (Anwendung)")) {
+    $rule = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue
+
+    if (-not $rule) {
+        Add-Result "Firewall" $ruleName "HINWEIS" `
+            "keine Regel - Windows fragt beim ersten Start nach, aus dem Netz kommt bis dahin niemand heran"
+    }
+    elseif ($rule.Enabled -ne "True" -or $rule.Action -ne "Allow") {
+        Add-Result "Firewall" $ruleName "FEHLER" "vorhanden, aber $($rule.Action)/$($rule.Enabled)"
+    }
+    else {
+        Add-Result "Firewall" $ruleName "OK" "eingehend erlaubt"
+    }
+}
+
+# ---------------------------------------------------------------------------------------
 # Netz
 # ---------------------------------------------------------------------------------------
 
