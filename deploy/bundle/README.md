@@ -150,7 +150,7 @@ Die Linux-Pakete sind `tar.gz` statt ZIP, weil nur so die Ausfuehrungsrechte mit
 
 | Ausloeser | Ergebnis | StockTV-Stand |
 |---|---|---|
-| Push auf Branch `preview` | Pre-Release **`preview`**, wird bei jedem Lauf ersetzt | `develop` |
+| Push auf Branch `preview` | Pre-Release **`preview-latest`**, wird bei jedem Lauf ersetzt | `develop` |
 | Tag `v*` pushen (z. B. `v1.2.0`) | Release zum Tag | `main` |
 | *Run workflow* von einem anderen Branch | nur Artefakte am Lauf (7 Tage) | `develop` |
 
@@ -177,7 +177,7 @@ Typischer Ablauf:
 ```powershell
 # Preview: aktuellen Stand testen
 # (preview ist nur ein Ausloeser; zeigte er zuletzt auf einen anderen Branch: --force)
-git push origin main:preview          # oder einen Feature-Branch: git push origin feature/x:preview
+git push origin main:refs/heads/preview   # oder ein Feature-Branch: feature/x:refs/heads/preview
 
 # Release
 git tag v1.2.0
