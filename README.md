@@ -1,7 +1,13 @@
 # StockTV-Kiosk
 
-Plattformuebergreifende Kiosk-Anwendung (Windows + Linux), die die bestehende
-StockTV-Blazor-App auf einem oder zwei Bildschirmen im randlosen Vollbild anzeigt.
+Plattformuebergreifende Kiosk-Anwendung (Windows, Linux, Raspberry Pi), die
+[StockTV](https://github.com/Trawacho/StockTV) - die Anzeige- und Eingabeanwendung fuer den
+Stocksport (Eisstockschiessen) - auf einem oder zwei Bildschirmen im randlosen Vollbild anzeigt.
+
+Gehoert zur StockTV-Familie:
+[StockTV](https://github.com/Trawacho/StockTV) (die Anwendung),
+StockTV-Kiosk (dieses Repo, Anzeige und Verteilpaket) und
+[StockTvWol](https://github.com/tripleS4U/StockTvWol) (Geraete wecken und fernsteuern).
 
 Erkennt beim Start die verfuegbaren Displays und oeffnet
 * **zwei** Fenster (Bedienfenster + Spiegel), wenn ein zweiter Bildschirm nutzbar ist,
