@@ -572,3 +572,15 @@ Zielbildschirm und URL, jeder Verbindungsversuch sowie Ladefehler.
 Unter Windows haengt sich der Kiosk an eine vorhandene Konsole an, ohne selbst eine zu
 oeffnen: aus einem Terminal gestartet erscheinen die Logs dort, per Doppelklick gestartet
 stoert kein Konsolenfenster.
+
+## Lizenz
+
+Copyright (C) 2026 tripleS4U
+
+Dieses Programm ist freie Software unter der GNU General Public License Version 3
+(siehe [LICENSE](LICENSE)). Es darf genutzt, veraendert und weitergegeben werden; wer
+veraenderte oder unveraenderte Fassungen weitergibt, muss den Quellcode unter derselben
+Lizenz mitliefern. Es gibt keinerlei Gewaehrleistung.
+
+Das Verteilpaket enthaelt zusaetzlich [StockTV](https://github.com/Trawacho/StockTV),
+ebenfalls GPL-3.0. Den genauen StockTV-Stand nennen die Release-Notes und `VERSION.txt`.
