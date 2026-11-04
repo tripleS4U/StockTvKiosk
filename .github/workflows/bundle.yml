@@ -278,32 +278,70 @@ jobs:
           cat notes.md
           ls -lh dist
 
+      # Die GitHub-API antwortet bei Stoerungen gelegentlich mit HTTP 500. Statt den
+      # ganzen Lauf scheitern zu lassen, wird der Schritt bis zu viermal wiederholt
+      # (Pausen 20 s, 40 s, 80 s). Jeder Versuch ist so gebaut, dass er auf einem
+      # halb fertigen Vorgaenger aufsetzen kann.
+      - name: Wiederholungs-Hilfe
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/retry.sh" <<'EOF'
+          retry() {
+            local attempt=1 max=4 pause=20
+            until "$@"; do
+              if [ "$attempt" -ge "$max" ]; then
+                echo "::error::$1 nach $max Versuchen fehlgeschlagen."
+                return 1
+              fi
+              echo "::warning::Versuch $attempt von $max fehlgeschlagen - neuer Versuch in ${pause} s."
+              sleep "$pause"
+              attempt=$((attempt + 1))
+              pause=$((pause * 2))
+            done
+          }
+          EOF
+
       - name: Pre-Release "preview" ersetzen
         if: needs.meta.outputs.mode == 'preview'
         shell: bash
         run: |
           set -euo pipefail
-          # Release samt Tag entfernen, damit der Tag "preview" auf den neuen Commit zeigt.
-          gh release delete preview --cleanup-tag --yes 2>/dev/null || true
-          # Falls nur der Tag ohne Release uebrig ist (z. B. abgebrochener Lauf).
-          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/preview" 2>/dev/null || true
-          gh release create preview dist/* \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "Preview ($VERSION)" \
-            --notes-file notes.md
+          source "$RUNNER_TEMP/retry.sh"
+
+          publish_preview() {
+            # Release samt Tag entfernen, damit der Tag "preview" auf den neuen Commit
+            # zeigt. Raeumt auch auf, was ein gescheiterter Versuch hinterlassen hat.
+            gh release delete preview --cleanup-tag --yes >/dev/null 2>&1 || true
+            # Falls nur der Tag ohne Release uebrig ist (z. B. abgebrochener Lauf).
+            gh api -X DELETE "repos/$GH_REPO/git/refs/tags/preview" >/dev/null 2>&1 || true
+            gh release create preview dist/* \
+              --target "$GITHUB_SHA" \
+              --prerelease \
+              --title "Preview ($VERSION)" \
+              --notes-file notes.md
+          }
+
+          retry publish_preview
 
       - name: Release zum Tag
         if: needs.meta.outputs.mode == 'release'
         shell: bash
         run: |
           set -euo pipefail
-          if gh release view "$VERSION" >/dev/null 2>&1; then
-            echo "Release $VERSION existiert bereits - Dateien werden ersetzt."
-            gh release upload "$VERSION" dist/* --clobber
-          else
-            gh release create "$VERSION" dist/* \
-              --verify-tag \
-              --title "StockTV $VERSION" \
-              --notes-file notes.md
-          fi
+          source "$RUNNER_TEMP/retry.sh"
+
+          # Ein echtes Release wird nie geloescht: gibt es es schon (erneuter Lauf oder
+          # halb fertiger Versuch), werden nur die Dateien ersetzt.
+          publish_release() {
+            if gh release view "$VERSION" >/dev/null 2>&1; then
+              echo "Release $VERSION existiert bereits - Dateien werden ersetzt."
+              gh release upload "$VERSION" dist/* --clobber
+            else
+              gh release create "$VERSION" dist/* \
+                --verify-tag \
+                --title "StockTV $VERSION" \
+                --notes-file notes.md
+            fi
+          }
+
+          retry publish_release
