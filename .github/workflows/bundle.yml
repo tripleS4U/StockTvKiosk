@@ -1,0 +1,309 @@
+name: Verteilpaket
+
+# Baut das gemeinsame Verteilpaket aus StockTV und StockTV-Kiosk
+# (deploy/bundle/Publish-Bundle.ps1) fuer Windows, Linux x64 und den Raspberry Pi.
+#
+#   Push auf "preview"   -> Pre-Release "preview" (wird bei jedem Lauf ersetzt),
+#                           StockTV-Stand: vars.STOCKTV_PREVIEW_REF (Standard develop)
+#   Tag "v*"             -> GitHub-Release zum Tag,
+#                           StockTV-Stand: vars.STOCKTV_RELEASE_REF (Standard main)
+#   "Run workflow"       -> wie oben je nach gewaehltem Branch/Tag; im Feld stocktv_ref
+#                           laesst sich ein anderer StockTV-Branch, -Tag oder -Commit
+#                           eintragen. Von einem anderen Branch als preview gestartet,
+#                           entstehen nur Artefakte am Lauf, kein Release.
+#
+# Repo-Variablen (Settings > Secrets and variables > Actions > Variables), alle optional:
+#   STOCKTV_REPOSITORY    Standard Trawacho/StockTV
+#   STOCKTV_PREVIEW_REF   Standard develop
+#   STOCKTV_RELEASE_REF   Standard main
+
+on:
+  push:
+    branches: [preview]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      stocktv_ref:
+        description: 'StockTV-Branch, -Tag oder -Commit (leer = Standard)'
+        required: false
+        default: ''
+
+# Pro Branch/Tag nur ein Lauf. Eine neue Preview ersetzt eine noch laufende,
+# ein Release wird nie abgebrochen.
+concurrency:
+  group: bundle-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_type != 'tag' }}
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+
+  # -------------------------------------------------------------------------------------
+  #  Was wird gebaut? StockTV-Stand einmal auf einen Commit festlegen, damit alle drei
+  #  Plattformen garantiert denselben Stand bekommen, auch wenn zwischendurch jemand
+  #  auf develop pusht.
+  # -------------------------------------------------------------------------------------
+  meta:
+    name: Stand festlegen
+    runs-on: ubuntu-latest
+    outputs:
+      mode: ${{ steps.m.outputs.mode }}
+      version: ${{ steps.m.outputs.version }}
+      stocktv_repo: ${{ steps.m.outputs.stocktv_repo }}
+      stocktv_ref: ${{ steps.m.outputs.stocktv_ref }}
+      stocktv_sha: ${{ steps.m.outputs.stocktv_sha }}
+    steps:
+      - name: Modus, Version und StockTV-Commit bestimmen
+        id: m
+        shell: bash
+        env:
+          INPUT_REF: ${{ inputs.stocktv_ref }}
+          STOCKTV_REPOSITORY: ${{ vars.STOCKTV_REPOSITORY || 'Trawacho/StockTV' }}
+          PREVIEW_REF: ${{ vars.STOCKTV_PREVIEW_REF || 'develop' }}
+          RELEASE_REF: ${{ vars.STOCKTV_RELEASE_REF || 'main' }}
+        run: |
+          set -euo pipefail
+
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            mode=release
+            version="$GITHUB_REF_NAME"
+            ref="$RELEASE_REF"
+          elif [ "$GITHUB_REF" = "refs/heads/preview" ]; then
+            mode=preview
+            version="preview-$GITHUB_RUN_NUMBER"
+            ref="$PREVIEW_REF"
+          else
+            mode=artifacts
+            version="dev-$GITHUB_RUN_NUMBER"
+            ref="$PREVIEW_REF"
+          fi
+
+          if [ -n "$INPUT_REF" ]; then ref="$INPUT_REF"; fi
+
+          # Name -> Commit. Branch zuerst, dann Tag (bei annotierten Tags zaehlt der
+          # Commit hinter ^{}), ein voller Commit-Hash wird so uebernommen.
+          url="https://github.com/$STOCKTV_REPOSITORY.git"
+          sha=""
+          if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
+            sha="$ref"
+          else
+            for candidate in "refs/heads/$ref" "refs/tags/$ref^{}" "refs/tags/$ref"; do
+              sha=$(git ls-remote "$url" "$candidate" | awk 'NR==1 {print $1}')
+              [ -n "$sha" ] && break
+            done
+          fi
+
+          if [ -z "$sha" ]; then
+            echo "::error::StockTV-Stand '$ref' in $STOCKTV_REPOSITORY nicht gefunden."
+            exit 1
+          fi
+
+          {
+            echo "mode=$mode"
+            echo "version=$version"
+            echo "stocktv_repo=$STOCKTV_REPOSITORY"
+            echo "stocktv_ref=$ref"
+            echo "stocktv_sha=$sha"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Verteilpaket $version"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Modus | \`$mode\` |"
+            echo "| Kiosk | \`$GITHUB_REF_NAME\` @ \`${GITHUB_SHA:0:7}\` |"
+            echo "| StockTV | \`$ref\` @ \`${sha:0:7}\` ($STOCKTV_REPOSITORY) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # -------------------------------------------------------------------------------------
+  #  Kiosk-Tests. StockTV testet sich in seinem eigenen Repository.
+  # -------------------------------------------------------------------------------------
+  test:
+    name: Tests Kiosk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: global.json
+
+      - name: dotnet test
+        run: dotnet test tests/StockTvKiosk.Core.Tests/StockTvKiosk.Core.Tests.csproj --configuration Release
+
+  # -------------------------------------------------------------------------------------
+  #  Paket je Plattform. Beide Repositories liegen nebeneinander, genau wie auf dem
+  #  Entwicklungsrechner - Publish-Bundle.ps1 findet StockTV dadurch von selbst.
+  # -------------------------------------------------------------------------------------
+  build:
+    name: Paket ${{ matrix.rid }}
+    needs: [meta, test]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: linux-arm64      # Raspberry Pi 4/5, 64-bit Raspberry Pi OS
+            os: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    env:
+      PACKAGE_NAME: stocktv-bundle-${{ needs.meta.outputs.version }}-${{ matrix.rid }}
+    steps:
+      - name: Checkout StockTvKiosk
+        uses: actions/checkout@v6
+        with:
+          path: StockTvKiosk
+
+      - name: Checkout StockTV
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ needs.meta.outputs.stocktv_repo }}
+          ref: ${{ needs.meta.outputs.stocktv_sha }}
+          path: StockTV
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          global-json-file: StockTvKiosk/global.json
+
+      - name: Publish-Bundle.ps1
+        shell: pwsh
+        run: |
+          ./StockTvKiosk/deploy/bundle/Publish-Bundle.ps1 `
+            -Runtime ${{ matrix.rid }} `
+            -OutputRoot (Join-Path $env:RUNNER_TEMP $env:PACKAGE_NAME) `
+            -PackageVersion "${{ needs.meta.outputs.version }}"
+
+      # Windows: zip. Linux: tar.gz, weil nur so die Ausfuehrungsrechte mitkommen -
+      # Skripte und Programmdateien laufen auf dem Geraet dann ohne chmod.
+      - name: Packen (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        working-directory: ${{ runner.temp }}
+        run: |
+          7z a -tzip -mx=7 "$env:PACKAGE_NAME.zip" "$env:PACKAGE_NAME" | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z fehlgeschlagen" }
+          Get-Item "$env:PACKAGE_NAME.zip" | Select-Object Name, @{n='MB';e={[math]::Round($_.Length/1MB,1)}}
+
+      - name: Packen (tar.gz)
+        if: runner.os == 'Linux'
+        shell: bash
+        working-directory: ${{ runner.temp }}
+        run: |
+          set -euo pipefail
+          chmod +x "$PACKAGE_NAME"/*.sh \
+                   "$PACKAGE_NAME"/StockTvApps/StockTV/StockTvBlazor \
+                   "$PACKAGE_NAME"/StockTvApps/StockTvKiosk/StockTvKiosk
+          tar -czf "$PACKAGE_NAME.tar.gz" "$PACKAGE_NAME"
+          ls -lh "$PACKAGE_NAME.tar.gz"
+
+      - name: Artefakt hochladen
+        uses: actions/upload-artifact@v7
+        with:
+          name: bundle-${{ matrix.rid }}
+          path: |
+            ${{ runner.temp }}/${{ env.PACKAGE_NAME }}.zip
+            ${{ runner.temp }}/${{ env.PACKAGE_NAME }}.tar.gz
+          if-no-files-found: error
+          compression-level: 0     # schon gepackt
+          retention-days: 7
+
+  # -------------------------------------------------------------------------------------
+  #  Veroeffentlichen. Preview: ein einziges Pre-Release "preview", das bei jedem Lauf
+  #  geloescht und neu angelegt wird. Release: Release zum Tag (ein erneuter Lauf
+  #  ersetzt nur die Dateien).
+  # -------------------------------------------------------------------------------------
+  publish:
+    name: Veroeffentlichen (${{ needs.meta.outputs.mode }})
+    needs: [meta, build]
+    if: needs.meta.outputs.mode != 'artifacts'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      MODE: ${{ needs.meta.outputs.mode }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      STOCKTV_REPO: ${{ needs.meta.outputs.stocktv_repo }}
+      STOCKTV_REF: ${{ needs.meta.outputs.stocktv_ref }}
+      STOCKTV_SHA: ${{ needs.meta.outputs.stocktv_sha }}
+    steps:
+      - name: Artefakte herunterladen
+        uses: actions/download-artifact@v8
+        with:
+          pattern: bundle-*
+          path: dist
+          merge-multiple: true
+
+      - name: Release-Notes schreiben
+        shell: bash
+        run: |
+          set -euo pipefail
+          server="$GITHUB_SERVER_URL"
+          {
+            if [ "$MODE" = "preview" ]; then
+              echo "> **Vorabversion** zum Testen, nicht fuer den Turnierbetrieb."
+              echo "> Wird bei jedem Push auf \`preview\` ersetzt."
+              echo ""
+            fi
+            echo "## Enthaltene Staende"
+            echo ""
+            echo "| Anwendung | Stand | Commit |"
+            echo "|---|---|---|"
+            echo "| StockTV-Kiosk | \`$GITHUB_REF_NAME\` | [\`${GITHUB_SHA:0:7}\`]($server/$GITHUB_REPOSITORY/commit/$GITHUB_SHA) |"
+            echo "| StockTV | \`$STOCKTV_REF\` | [\`${STOCKTV_SHA:0:7}\`]($server/$STOCKTV_REPO/commit/$STOCKTV_SHA) |"
+            echo ""
+            echo "## Pakete"
+            echo ""
+            echo "| Datei | Ziel |"
+            echo "|---|---|"
+            echo "| \`stocktv-bundle-$VERSION-win-x64.zip\` | Windows 10/11 x64 - entpacken, \`Install-StockTV.cmd\` ausfuehren |"
+            echo "| \`stocktv-bundle-$VERSION-linux-arm64.tar.gz\` | Raspberry Pi 4/5, 64-bit Raspberry Pi OS - \`tar xzf\`, dann \`./install-stocktv.sh\` |"
+            echo "| \`stocktv-bundle-$VERSION-linux-x64.tar.gz\` | Linux-PC x64 - \`tar xzf\`, dann \`./install-stocktv.sh\` |"
+            echo ""
+            echo "Beide Anwendungen sind self-contained, auf dem Zielgeraet muss kein .NET installiert sein."
+            echo "Details: [deploy/bundle/README.md]($server/$GITHUB_REPOSITORY/blob/$GITHUB_SHA/deploy/bundle/README.md)"
+            echo ""
+            echo "[Build-Lauf]($server/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)"
+          } > notes.md
+          cat notes.md
+          ls -lh dist
+
+      - name: Pre-Release "preview" ersetzen
+        if: needs.meta.outputs.mode == 'preview'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Release samt Tag entfernen, damit der Tag "preview" auf den neuen Commit zeigt.
+          gh release delete preview --cleanup-tag --yes 2>/dev/null || true
+          # Falls nur der Tag ohne Release uebrig ist (z. B. abgebrochener Lauf).
+          gh api -X DELETE "repos/$GH_REPO/git/refs/tags/preview" 2>/dev/null || true
+          gh release create preview dist/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Preview ($VERSION)" \
+            --notes-file notes.md
+
+      - name: Release zum Tag
+        if: needs.meta.outputs.mode == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$VERSION" >/dev/null 2>&1; then
+            echo "Release $VERSION existiert bereits - Dateien werden ersetzt."
+            gh release upload "$VERSION" dist/* --clobber
+          else
+            gh release create "$VERSION" dist/* \
+              --verify-tag \
+              --title "StockTV $VERSION" \
+              --notes-file notes.md
+          fi

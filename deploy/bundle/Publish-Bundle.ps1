@@ -89,7 +89,12 @@ param(
 
     [switch]$SkipStockTv,
 
-    [switch]$SkipKiosk
+    [switch]$SkipKiosk,
+
+    # Version des Verteilpakets, z. B. "v1.2.0" oder "preview-17". Landet nur in
+    # VERSION.txt; die Versionen der beiden Anwendungen bleiben die aus ihren Projekten.
+    # Die Build-Pipeline setzt sie, von Hand gebaut bleibt sie leer.
+    [string]$PackageVersion
 )
 
 $ErrorActionPreference = "Stop"
@@ -104,8 +109,10 @@ $SourceRoot = Split-Path -Parent $KioskRepo
 
 if (-not $StockTvRepo) { $StockTvRepo = Join-Path $SourceRoot "StockTV" }
 
-$KioskProject   = Join-Path $KioskRepo   "src\StockTvKiosk.App\StockTvKiosk.App.csproj"
-$StockTvProject = Join-Path $StockTvRepo "StockTvBlazor\StockTvBlazor.csproj"
+# Pfade im Skript durchgehend mit "/": Windows versteht beide Trenner, Linux nur diesen.
+# Das Skript laeuft auch auf den Linux-Runnern der Build-Pipeline (.github/workflows).
+$KioskProject   = Join-Path $KioskRepo   "src/StockTvKiosk.App/StockTvKiosk.App.csproj"
+$StockTvProject = Join-Path $StockTvRepo "StockTvBlazor/StockTvBlazor.csproj"
 
 foreach ($required in @($KioskProject, $StockTvProject)) {
     if (-not (Test-Path $required)) {
@@ -183,7 +190,7 @@ $isWindowsTarget = $Runtime -like "win-*"
 # das allemal wert - so laesst sich ein Paket auch nachtraeglich noch einordnen.
 $configOut = Join-Path $OutputRoot "config"
 New-Item -ItemType Directory -Path $configOut -Force | Out-Null
-Copy-Item (Join-Path $BundleDir "config\*") $configOut -Force
+Copy-Item (Join-Path $BundleDir "config/*") $configOut -Force
 
 Copy-Item (Join-Path $BundleDir "README.md") $OutputRoot -Force
 
@@ -198,8 +205,8 @@ if ($isWindowsTarget) {
 
     # Der Task-Installer stammt aus deploy/windows und wird nicht kopiert, sondern
     # weitergereicht - so gibt es ihn weiterhin nur einmal im Repository.
-    Copy-Item (Join-Path $KioskRepo "deploy\windows\Install-KioskTask.ps1")   $OutputRoot -Force
-    Copy-Item (Join-Path $KioskRepo "deploy\windows\Uninstall-KioskTask.ps1") $OutputRoot -Force
+    Copy-Item (Join-Path $KioskRepo "deploy/windows/Install-KioskTask.ps1")   $OutputRoot -Force
+    Copy-Item (Join-Path $KioskRepo "deploy/windows/Uninstall-KioskTask.ps1") $OutputRoot -Force
 
     Write-Host "   Windows-Skripte."
 }
@@ -220,7 +227,7 @@ else {
     New-Item -ItemType Directory -Path $unitsOut -Force | Out-Null
 
     foreach ($unit in @("stocktv.service", "stocktv-kiosk.service")) {
-        $text = [IO.File]::ReadAllText((Join-Path $KioskRepo "deploy\linux\$unit")) -replace "`r`n", "`n"
+        $text = [IO.File]::ReadAllText((Join-Path $KioskRepo "deploy/linux/$unit")) -replace "`r`n", "`n"
         [IO.File]::WriteAllText((Join-Path $unitsOut $unit), $text, (New-Object Text.UTF8Encoding $false))
     }
 
@@ -314,10 +321,19 @@ function Get-GitDescription {
 }
 
 $version = @(
-    "StockTV-Verteilpaket"
+    "StockTV-Verteilpaket $PackageVersion".TrimEnd()
+    "Plattform: $Runtime"
     "Erstellt:  $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
-    "Rechner:   $env:COMPUTERNAME"
+    "Rechner:   $([Environment]::MachineName)"
     "Konfiguration: $Configuration"
+)
+
+# In GitHub Actions: Link auf den Lauf, der das Paket gebaut hat.
+if ($env:GITHUB_RUN_ID) {
+    $version += "Build:     $env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+}
+
+$version += @(
     ""
     "StockTV        $(Get-Version $StockTvOut 'StockTvBlazor')"
     "  Quelle       $(Get-GitDescription $StockTvRepo)"

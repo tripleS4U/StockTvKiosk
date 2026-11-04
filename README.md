@@ -377,6 +377,11 @@ Konfigurationsdateien passend zueinander — die haeufigste stille Fehlerquelle 
 eine Portabweichung zwischen `Urls > PrimaryUrl` und dem Port, auf dem StockTV lauscht.
 Einzelheiten in [deploy/bundle/README.md](deploy/bundle/README.md).
 
+Fertige Pakete fuer Windows, Linux x64 und den Raspberry Pi baut die GitHub-Pipeline
+[`.github/workflows/bundle.yml`](.github/workflows/bundle.yml): Push auf `preview` ergibt
+ein Pre-Release (StockTV `develop`), ein Tag `v*` ein Release (StockTV `main`). Siehe
+[deploy/bundle/README.md](deploy/bundle/README.md#paket-bauen-github-actions).
+
 ## Autostart
 
 Auf beiden Plattformen gilt dasselbe Muster: **zwei getrennte Einheiten**, eine fuer

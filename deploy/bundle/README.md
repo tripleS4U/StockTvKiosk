@@ -118,6 +118,7 @@ Versionsstempel dazu.
 | `-StockTvRepo` | Nachbarordner | Wurzel des StockTV-Repositorys |
 | `-WebView2` | `Bootstrapper` | welcher WebView2-Installer beiliegt, siehe oben |
 | `-SkipStockTv` / `-SkipKiosk` | | eine Seite stehen lassen |
+| `-PackageVersion` | leer | Paketversion fuer `VERSION.txt` (setzt die Build-Pipeline) |
 
 Fuer den Raspberry Pi:
 
@@ -129,6 +130,59 @@ Bewusst ein eigenes Paket statt zwei Plattformen in einem: sonst kopierte jedes 
 den Ballast der jeweils anderen mit. Welche Skripte beiliegen, richtet sich nach `-Runtime`
 — Windows bekommt die `.ps1`-Dateien und den WebView2-Installer, Linux die `.sh`-Dateien
 und die systemd-Vorlagen.
+
+---
+
+## Paket bauen (GitHub Actions)
+
+Dasselbe Skript laeuft auch in der Pipeline
+[`.github/workflows/bundle.yml`](../../.github/workflows/bundle.yml). Sie checkt dieses
+Repository und StockTV nebeneinander aus und baut alle drei Pakete gleichzeitig:
+
+| Datei | Ziel |
+|---|---|
+| `stocktv-bundle-<version>-win-x64.zip` | Windows x64 |
+| `stocktv-bundle-<version>-linux-arm64.tar.gz` | Raspberry Pi 4/5, 64-bit Raspberry Pi OS |
+| `stocktv-bundle-<version>-linux-x64.tar.gz` | Linux-PC x64 |
+
+Die Linux-Pakete sind `tar.gz` statt ZIP, weil nur so die Ausfuehrungsrechte mitkommen —
+`chmod +x` entfaellt auf dem Geraet. Entpackt wird mit `tar xzf <datei>`.
+
+| Ausloeser | Ergebnis | StockTV-Stand |
+|---|---|---|
+| Push auf Branch `preview` | Pre-Release **`preview`**, wird bei jedem Lauf ersetzt | `develop` |
+| Tag `v*` pushen (z. B. `v1.2.0`) | Release zum Tag | `main` |
+| *Run workflow* von einem anderen Branch | nur Artefakte am Lauf (7 Tage) | `develop` |
+
+Bei *Run workflow* (Actions → Verteilpaket) laesst sich im Feld `stocktv_ref` ein anderer
+StockTV-Branch, -Tag oder -Commit eintragen, z. B. `feature/rest-api-security` oder
+`v1.9.1`. Die Vorgaben `develop`/`main` lassen sich ohne Commit ueber Repo-Variablen
+umstellen (Settings → Secrets and variables → Actions → Variables):
+
+| Variable | Vorgabe |
+|---|---|
+| `STOCKTV_PREVIEW_REF` | `develop` |
+| `STOCKTV_RELEASE_REF` | `main` |
+| `STOCKTV_REPOSITORY` | `Trawacho/StockTV` |
+
+Der StockTV-Stand wird zu Beginn **einmal** auf einen Commit festgelegt, damit alle drei
+Plattformen denselben bekommen. Welcher es war, steht in den Release-Notes und in
+`VERSION.txt` im Paket — wichtig bei `main`, das sich mit jedem StockTV-Release bewegt.
+
+Vorher laufen die Kiosk-Tests; schlagen sie fehl, entsteht kein Paket. StockTV testet sich
+in seinem eigenen Repository.
+
+Typischer Ablauf:
+
+```powershell
+# Preview: aktuellen Stand testen
+# (preview ist nur ein Ausloeser; zeigte er zuletzt auf einen anderen Branch: --force)
+git push origin main:preview          # oder einen Feature-Branch: git push origin feature/x:preview
+
+# Release
+git tag v1.2.0
+git push origin v1.2.0
+```
 
 ---
 
