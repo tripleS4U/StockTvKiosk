@@ -194,6 +194,22 @@ Copy-Item (Join-Path $BundleDir "config/*") $configOut -Force
 
 Copy-Item (Join-Path $BundleDir "README.md") $OutputRoot -Force
 
+# Beide Anwendungen stehen unter der GPL-3.0. Wer das Paket weitergibt, muss den Lizenztext
+# mitgeben - er liegt deshalb im jeweiligen Programmordner und wandert mit der Installation
+# auf das Geraet. Als .txt, damit er sich unter Windows per Doppelklick oeffnen laesst.
+$licenses = @(
+    @{ Source = (Join-Path $StockTvRepo "LICENSE.md"); Target = $StockTvOut; Label = "StockTV" }
+    @{ Source = (Join-Path $KioskRepo   "LICENSE");    Target = $KioskOut;   Label = "StockTV-Kiosk" }
+)
+foreach ($license in $licenses) {
+    if (-not (Test-Path $license.Target)) { continue }
+    if (Test-Path $license.Source) {
+        Copy-Item $license.Source (Join-Path $license.Target "LICENSE.txt") -Force
+    } else {
+        Write-Warning "$($license.Label): Lizenztext nicht gefunden ($($license.Source))."
+    }
+}
+
 if ($isWindowsTarget) {
     # Die .cmd-Starter rufen die Skripte mit -ExecutionPolicy Bypass auf. Ohne sie
     # braeuchte es auf einem frischen Windows erst ein systemweites

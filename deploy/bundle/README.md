@@ -43,6 +43,12 @@ C:\StockTV-Install-linux-arm64\   <- Raspberry Pi, per scp/rsync aufs Geraet
 Der Ordner `StockTvApps` im Paket ist genau das, was die Installation nach `C:\` legt —
 Paket und Installation sind damit deckungsgleich aufgebaut.
 
+Beide Programmordner enthalten ihren Lizenztext als `LICENSE.txt`. StockTV und der Kiosk
+stehen unter der GNU GPL Version 3: wer das Paket weitergibt, gibt die Lizenztexte mit und
+nennt die Quellen ([StockTV](https://github.com/Trawacho/StockTV),
+[StockTvKiosk](https://github.com/tripleS4U/StockTvKiosk)). Den genauen Stand beider
+Quellen nennt `VERSION.txt`.
+
 Paket und Installation sind bewusst **zwei** Ordner. Laege das Paket in der Installation,
 kaemen 260 MB doppelt zu liegen, und spaeter waere nicht mehr zu erkennen, was wovon ist.
 Die Installation bricht in dem Fall mit einem Hinweis ab.
