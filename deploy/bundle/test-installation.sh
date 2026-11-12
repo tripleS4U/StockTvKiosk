@@ -111,6 +111,32 @@ else
         "fehlt - StockTV legt sie beim ersten Start mit Standardwerten an"
 fi
 
+# Geraete-Datei von StockTV: REST-Schnittstelle fuer StockSuite. Ohne Schluessel startet sie nicht.
+STOCKTV_DEVICE="${STOCKTV_HOME}/_config/stocktv.device.json"
+STOCKTV_API_PORT=""
+if [ -f "$STOCKTV_DEVICE" ]; then
+    STV_KEY="$(read_json_string "$STOCKTV_DEVICE" ApiKey)"
+    STV_BIND="$(read_json_string "$STOCKTV_DEVICE" BindAddress)"
+    STV_ON="$(sed -n '/"RestApi"/,/}/ s/.*"Enabled"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$STOCKTV_DEVICE" | head -n1)"
+    STOCKTV_API_PORT="$(sed -n '/"RestApi"/,/}/ s/.*"Port"[[:space:]]*:[[:space:]]*\([0-9]\+\).*/\1/p' "$STOCKTV_DEVICE" | head -n1)"
+
+    if [ "$STV_ON" != "true" ]; then
+        result "Konfiguration" "StockTV-REST (StockSuite)" "HINWEIS" "ausgeschaltet - StockSuite findet diese Anzeige nicht"
+        STOCKTV_API_PORT=""
+    elif [ -z "$STV_KEY" ] && ! { [ "$STV_BIND" = "127.0.0.1" ] || [ "$STV_BIND" = "localhost" ] || [ "$STV_BIND" = "::1" ]; }; then
+        result "Konfiguration" "StockTV-REST (StockSuite)" "FEHLER" \
+            "API-Schluessel leer - die Schnittstelle startet nicht. Behebt: install-stocktv.sh erneut ausfuehren"
+    else
+        case "$STV_KEY" in
+            enc:*) result "Konfiguration" "StockTV-REST (StockSuite)" "OK" "Port ${STOCKTV_API_PORT}, Schluessel gesetzt und verschluesselt" ;;
+            *)     result "Konfiguration" "StockTV-REST (StockSuite)" "OK" "Port ${STOCKTV_API_PORT}, Schluessel gesetzt" ;;
+        esac
+    fi
+else
+    result "Konfiguration" "stocktv.device.json" "FEHLER" \
+        "fehlt - StockTV legt sie ohne API-Schluessel an, dann findet StockSuite die Anzeige nicht. Behebt: install-stocktv.sh erneut ausfuehren"
+fi
+
 KIOSK_PORT=""
 HOST_PORT=""
 BLAZOR_HOST_ENABLED=""
@@ -264,6 +290,26 @@ if [ -n "${KIOSK_API_PORT:-}" ]; then
                  result "Netz" "Kiosk-Fernsteuerung" "OK" "steht, Schluessel nicht geprueft (--api-key angeben)"
              fi ;;
         *)   result "Netz" "Kiosk-Fernsteuerung" "HINWEIS" "HTTP ${CODE}" ;;
+    esac
+fi
+
+if [ -n "${STOCKTV_API_PORT:-}" ]; then
+    if [ -n "$API_KEY" ]; then
+        CODE="$(probe -H "X-Api-Key: ${API_KEY}" "http://localhost:${STOCKTV_API_PORT}/api/v1/hello")"
+    else
+        CODE="$(probe "http://localhost:${STOCKTV_API_PORT}/api/v1/hello")"
+    fi
+
+    case "$CODE" in
+        000) result "Netz" "StockTV-REST (StockSuite)" "FEHLER" \
+                 "keine Antwort auf Port ${STOCKTV_API_PORT} - Grund steht im StockTV-Protokoll (_logs)" ;;
+        200) result "Netz" "StockTV-REST (StockSuite)" "OK" "antwortet${API_KEY:+ mit Schluessel}" ;;
+        401) if [ -n "$API_KEY" ]; then
+                 result "Netz" "StockTV-REST (StockSuite)" "FEHLER" "Schluessel abgelehnt - StockTV hat einen anderen als den angegebenen"
+             else
+                 result "Netz" "StockTV-REST (StockSuite)" "OK" "steht, Schluessel nicht geprueft (--api-key angeben)"
+             fi ;;
+        *)   result "Netz" "StockTV-REST (StockSuite)" "HINWEIS" "HTTP ${CODE}" ;;
     esac
 fi
 

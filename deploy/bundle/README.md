@@ -20,7 +20,7 @@ C:\StockTV-Install\          <- Windows, auf den Zielrechner kopieren
   VERSION.txt                woraus das Paket gebaut wurde
 
 C:\StockTvApps\              <- die Installation unter Windows
-  StockTV\                   + _config\stocktv.config.json, _logs\
+  StockTV\                   + _config\stocktv.config.json, stocktv.device.json, _logs\
   StockTvKiosk\              + _config\AppConfig.json, _logs\
 ```
 
@@ -36,7 +36,7 @@ C:\StockTV-Install-linux-arm64\   <- Raspberry Pi, per scp/rsync aufs Geraet
   VERSION.txt
 
 /opt/stocktvapps/                 <- die Installation auf dem Pi
-  StockTV/                        + _config/stocktv.config.json, _logs/
+  StockTV/                        + _config/stocktv.config.json, stocktv.device.json, _logs/
   StockTvKiosk/                   + _config/AppConfig.json, _logs/
 ```
 
@@ -351,6 +351,16 @@ curl -X POST -H "X-Api-Key: Secret4StockTV?" -H "Content-Type: application/json"
 
 Der neue gilt ab der Antwort, der bisherige ist damit ungueltig.
 
+**StockTV bekommt denselben Schluessel** fuer seine REST-Schnittstelle (Port `8098`, ueber
+die StockSuite die Anzeige findet und steuert). Er steht in
+`StockTV\_config\stocktv.device.json`; aendern laesst er sich bei StockTV ueber
+`POST /api/v1/config/api-key` auf Port `8098`.
+
+> Pakete vor dem 12.11.2026 haben `stocktv.device.json` nicht geschrieben. StockTV legte sie
+> dann beim ersten Start **ohne** Schluessel an, und die REST-Schnittstelle blieb aus — StockSuite
+> fand die Anzeige nicht. Die Installation erneut ausfuehren behebt das: ein leerer Schluessel
+> wird nachgetragen, ein vorhandener bleibt. `Test-Installation` prueft das jetzt mit.
+
 ---
 
 ## Pruefen
@@ -383,6 +393,7 @@ Kiosk-Konfiguration.
 | Zweite Anzeige | `http://localhost:8080/display2` |
 | Aus dem Netz | `http://<rechnername>:8080` |
 | Fernsteuerung des Kiosks | `http://<rechnername>:8099/swagger` |
+| StockTV-REST (StockSuite) | `http://<rechnername>:8098` |
 
 Belegt werden:
 
@@ -390,6 +401,7 @@ Belegt werden:
 |---|---|---|
 | `8080` | TCP | Bedienoberflaeche von StockTV (`-Port`) |
 | `4747`, `4748` | TCP | NetMQ zu den Anzeigegeraeten |
+| `8098` | TCP | REST-Schnittstelle von StockTV (StockSuite) |
 | `5353` | UDP | Geraetesuche im Netz (mDNS) |
 | `8099` | TCP | Fernsteuerung des Kiosks (`-KioskApiPort`) |
 

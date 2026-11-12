@@ -177,11 +177,18 @@ $stockTvConfig  = Join-Path $StockTvHome "_config\stocktv.config.json"
 $kioskConfig    = Join-Path $KioskDir "_config\AppConfig.json"
 $kioskTemplate  = Join-Path $configSource "AppConfig.$Mode.json"
 $stockTvTemplate = Join-Path $configSource "stocktv.config.json"
+# Geraete-Datei von StockTV: REST-Schnittstelle samt API-Schluessel (Port 8098). Fehlt sie, teilt StockTV
+# beim ersten Start die Betriebs-Konfiguration auf und legt sie mit LEEREM Schluessel an - dann startet
+# die REST-Schnittstelle nicht, und StockSuite findet die Anzeige nicht.
+$stockTvDevice         = Join-Path $StockTvHome "_config\stocktv.device.json"
+$stockTvDeviceTemplate = Join-Path $configSource "stocktv.device.json"
+$stockTvApiPort        = 8098
 
 foreach ($required in @(
     @{ Path = (Join-Path $stockTvSource "StockTvBlazor.exe"); Label = "StockTV" }
     @{ Path = (Join-Path $kioskSource   "StockTvKiosk.exe");  Label = "StockTV-Kiosk" }
     @{ Path = $stockTvTemplate;                               Label = "StockTV-Konfigurationsvorlage" }
+    @{ Path = $stockTvDeviceTemplate;                         Label = "StockTV-Geraetevorlage" }
     @{ Path = $kioskTemplate;                                 Label = "Kiosk-Konfigurationsvorlage" }
 )) {
     if (-not (Test-Path $required.Path)) {
@@ -369,9 +376,65 @@ $kioskWritten = Install-ConfigFile -Template $kioskTemplate -Target $kioskConfig
         return $text
     }
 
-if (-not $kioskWritten -and $generatedKey) {
+# StockTV-Geraete-Datei: derselbe Schluessel wie beim Kiosk (StockTV verschluesselt ihn beim ersten Speichern).
+# Eine vorhandene Datei behaelt ihren Schluessel - ausser er ist leer (aeltere Pakete haben die Datei nicht
+# geschrieben, StockTV hat sie dann selbst ohne Schluessel angelegt), dann wird er nachgetragen.
+$stockTvKeyWritten = $false
+$deviceExists = Test-Path $stockTvDevice
+$deviceText = if ($deviceExists) { Get-Content $stockTvDevice -Raw } else { "" }
+$deviceKeyEmpty = $deviceExists -and ($deviceText -match '"ApiKey"\s*:\s*""')
+
+if ($deviceExists -and -not $ResetConfig -and -not $deviceKeyEmpty) {
+    Step "StockTV-Geraete-Datei bleibt unveraendert (schon vorhanden, mit Schluessel) - mit -ResetConfig ersetzen."
+}
+elseif ($deviceKeyEmpty -and -not $ResetConfig) {
+    if ($WhatIfOnly) { Step "wuerde den leeren API-Schluessel in $stockTvDevice eintragen" }
+    else {
+        $deviceText = $deviceText -replace '"ApiKey"\s*:\s*""', ('"ApiKey": "' + (ConvertTo-JsonValue $ApiKey) + '"')
+        Set-Content -Path $stockTvDevice -Value $deviceText -Encoding utf8
+        $stockTvKeyWritten = $true
+        Warn "StockTV hatte keinen API-Schluessel - die REST-Schnittstelle war aus. Schluessel nachgetragen; wirkt nach dem naechsten Start von StockTV."
+    }
+}
+elseif ($WhatIfOnly) {
+    Step "wuerde StockTV-Geraete-Datei schreiben: $stockTvDevice"
+}
+else {
+    $text = Get-Content $stockTvDeviceTemplate -Raw
+    $text = $text.Replace('"ApiKey": ""', '"ApiKey": "' + (ConvertTo-JsonValue $ApiKey) + '"')
+
+    # Eine alte Einzeldatei (vor der Aufteilung in drei Dateien) traegt Datei-Protokoll und Netzwerk selbst.
+    # Die neue Geraete-Datei verhindert, dass StockTV sie noch aufteilt - also hier uebernehmen, wie es auch
+    # die Installer von StockTV tun.
+    if (Test-Path $stockTvConfig) {
+        try {
+            $alt = Get-Content $stockTvConfig -Raw | ConvertFrom-Json
+            if ($null -ne $alt.General.FileLoggingEnabled) {
+                $wert = if ($alt.General.FileLoggingEnabled) { "true" } else { "false" }
+                $text = $text -replace '"FileLoggingEnabled"\s*:\s*(true|false)', "`"FileLoggingEnabled`": $wert"
+            }
+            if ($null -ne $alt.Network.Enabled) {
+                $wert = if ($alt.Network.Enabled) { "true" } else { "false" }
+                $text = $text -replace '("Network"\s*:\s*\{\s*"Enabled"\s*:\s*)(true|false)', "`${1}$wert"
+            }
+        }
+        catch { Warn "Die vorhandene StockTV-Konfiguration ist nicht lesbar; Datei-Protokoll und Netzwerk bleiben eingeschaltet." }
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $stockTvDevice) -Force | Out-Null
+    Set-Content -Path $stockTvDevice -Value $text -Encoding utf8
+    try { $null = Get-Content $stockTvDevice -Raw | ConvertFrom-Json }
+    catch { throw "StockTV-Geraete-Datei wurde geschrieben, ist aber kein gueltiges JSON: $($_.Exception.Message)" }
+    $stockTvKeyWritten = $true
+    Step "StockTV-Geraete-Datei geschrieben: $stockTvDevice (REST-Schnittstelle auf Port $stockTvApiPort)"
+}
+
+if (-not $kioskWritten -and -not $stockTvKeyWritten -and $generatedKey) {
     $ApiKey = $null
-    Warn "Die vorhandene Kiosk-Konfiguration behaelt ihren bisherigen API-Schluessel."
+    Warn "Die vorhandenen Konfigurationen behalten ihren bisherigen API-Schluessel."
+}
+elseif (-not $kioskWritten -and $stockTvKeyWritten) {
+    Warn "Der Kiosk behaelt seinen bisherigen API-Schluessel; StockTV hat den unten angezeigten."
 }
 
 # ---------------------------------------------------------------------------------------
@@ -559,8 +622,8 @@ $firewallRules = @(
     @{ Name = "StockTV (Anwendung)";       Program = $stockTvExe }
     @{ Name = "StockTV-Kiosk (Anwendung)"; Program = $kioskExe }
 
-    # HTTP der Bedienoberflaeche, NetMQ zu den Anzeigen, Fernsteuerung des Kiosks.
-    @{ Name = "StockTV (TCP)";      Protocol = "TCP"; Ports = @($Port, 4747, 4748) }
+    # HTTP der Bedienoberflaeche, NetMQ und REST (StockSuite) zur Verwaltung, Fernsteuerung des Kiosks.
+    @{ Name = "StockTV (TCP)";      Protocol = "TCP"; Ports = @($Port, 4747, 4748, $stockTvApiPort) }
     @{ Name = "StockTV-Kiosk (TCP)"; Protocol = "TCP"; Ports = @($KioskApiPort) }
 
     # Geraetesuche im Netz. UDP, und ohne sie findet die Gegenstelle den Rechner nicht.
@@ -615,6 +678,7 @@ Write-Host "  Kiosk          $KioskDir"
 Write-Host "  Bedienung      http://localhost:$Port/"
 Write-Host "  Im Netz        http://$($env:COMPUTERNAME):$Port"
 Write-Host "  Fernsteuerung  http://$($env:COMPUTERNAME):$KioskApiPort/swagger"
+Write-Host "  StockTV-REST   http://$($env:COMPUTERNAME):$stockTvApiPort  (fuer StockSuite, gleicher Schluessel)"
 
 if ($ApiKey) {
     Write-Host ""
