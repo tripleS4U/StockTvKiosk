@@ -1,9 +1,7 @@
 {
   "General": {
-    "FileLoggingEnabled": true,
     "BahnNummer": 2,
-    "Spielgruppe": 0,
-    "MessageVersion": 1
+    "Spielgruppe": 0
   },
   "Game": {
     "CurrentModus": 0,
@@ -14,35 +12,6 @@
     "CurrentRichtung": 0,
     "MidColumnWidth": 90,
     "ActiveThemeId": "00000000-0000-0000-0000-000000000002",
-    "CustomThemes": [],
-    "AllThemes": [
-      {
-        "Id": "00000000-0000-0000-0000-000000000001",
-        "Name": "Hell",
-        "IsBuiltIn": true
-      },
-      {
-        "Id": "00000000-0000-0000-0000-000000000002",
-        "Name": "Dunkel",
-        "IsBuiltIn": true
-      }
-    ],
-    "ActiveTheme": {
-      "Id": "00000000-0000-0000-0000-000000000002",
-      "Name": "Dunkel",
-      "IsBuiltIn": true
-    },
-    "Colors": {
-      "BackgroundColor": "#000000",
-      "ForegroundColor": "#d3d3d3",
-      "ForegroundLeft": "#ff0000",
-      "ForegroundRight": "#9acd32",
-      "ZielSummeGesamt": "#ff00ff",
-      "ZielSummeEinzel": "#00ffff",
-      "FontFamily": ""
-    }
-  },
-  "Network": {
-    "Enabled": true
+    "CustomThemes": []
   }
 }

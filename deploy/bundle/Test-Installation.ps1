@@ -158,6 +158,40 @@ else {
         "fehlt - StockTV legt sie beim ersten Start mit Standardwerten an"
 }
 
+# Geraete-Datei von StockTV: REST-Schnittstelle fuer StockSuite. Ohne Schluessel startet sie nicht.
+$stockTvDevicePath = Join-Path $StockTvHome "_config\stocktv.device.json"
+$stockTvApiPort = $null
+if (Test-Path $stockTvDevicePath) {
+    try {
+        $stockTvDevice  = Get-Content $stockTvDevicePath -Raw | ConvertFrom-Json
+        $stockTvApiKey  = Get-JsonValue $stockTvDevice @("RestApi", "ApiKey")
+        $stockTvApiBind = Get-JsonValue $stockTvDevice @("RestApi", "BindAddress")
+        $stockTvApiOn   = Get-JsonValue $stockTvDevice @("RestApi", "Enabled")
+        $stockTvApiPort = Get-JsonValue $stockTvDevice @("RestApi", "Port")
+
+        if (-not $stockTvApiOn) {
+            Add-Result "Konfiguration" "StockTV-REST (StockSuite)" "HINWEIS" "ausgeschaltet - StockSuite findet diese Anzeige nicht"
+            $stockTvApiPort = $null
+        }
+        elseif (-not $stockTvApiKey -and $stockTvApiBind -notin @("127.0.0.1", "localhost", "::1")) {
+            Add-Result "Konfiguration" "StockTV-REST (StockSuite)" "FEHLER" `
+                "API-Schluessel leer - die Schnittstelle startet nicht. Behebt: Install-StockTV.cmd erneut ausfuehren"
+        }
+        else {
+            Add-Result "Konfiguration" "StockTV-REST (StockSuite)" "OK" `
+                $(if ("$stockTvApiKey".StartsWith("enc:")) { "Port $stockTvApiPort, Schluessel gesetzt und verschluesselt" }
+                  else { "Port $stockTvApiPort, Schluessel gesetzt" })
+        }
+    }
+    catch {
+        Add-Result "Konfiguration" "stocktv.device.json" "FEHLER" "kein gueltiges JSON: $($_.Exception.Message)"
+    }
+}
+else {
+    Add-Result "Konfiguration" "stocktv.device.json" "FEHLER" `
+        "fehlt - StockTV legt sie ohne API-Schluessel an, dann findet StockSuite die Anzeige nicht. Behebt: Install-StockTV.cmd erneut ausfuehren"
+}
+
 $kioskConfig = $null
 $kioskPort   = $null
 $kioskApiPort = $null
@@ -361,6 +395,22 @@ if ($kioskApiPort) {
         401 { Add-Result "Netz" "Kiosk-Fernsteuerung" $(if ($ApiKey) { "FEHLER" } else { "OK" }) `
                 $(if ($ApiKey) { "Schluessel abgelehnt" } else { "steht, Schluessel nicht geprueft (-ApiKey angeben)" }) }
         default { Add-Result "Netz" "Kiosk-Fernsteuerung" "HINWEIS" "HTTP $($probe.Code)" }
+    }
+}
+
+if ($stockTvApiPort) {
+    $headers = @{}
+    if ($ApiKey) { $headers["X-Api-Key"] = $ApiKey }
+
+    $probe = Test-Endpoint "http://localhost:$stockTvApiPort/api/v1/hello" $headers
+
+    switch ($probe.Code) {
+        0   { Add-Result "Netz" "StockTV-REST (StockSuite)" $(if ($kioskRunning -or -not $blazorHostEnabled) { "FEHLER" } else { "HINWEIS" }) `
+                "keine Antwort auf Port $stockTvApiPort - Grund steht im StockTV-Protokoll (_logs)" }
+        200 { Add-Result "Netz" "StockTV-REST (StockSuite)" "OK" "antwortet mit Schluessel" }
+        401 { Add-Result "Netz" "StockTV-REST (StockSuite)" $(if ($ApiKey) { "FEHLER" } else { "OK" }) `
+                $(if ($ApiKey) { "Schluessel abgelehnt - StockTV hat einen anderen als den angegebenen" } else { "steht, Schluessel nicht geprueft (-ApiKey angeben)" }) }
+        default { Add-Result "Netz" "StockTV-REST (StockSuite)" "HINWEIS" "HTTP $($probe.Code)" }
     }
 }
 

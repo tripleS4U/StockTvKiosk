@@ -137,6 +137,7 @@ for required in \
     "${STOCKTV_SOURCE}/StockTvBlazor" \
     "${KIOSK_SOURCE}/StockTvKiosk" \
     "${CONFIG_SOURCE}/stocktv.config.json" \
+    "${CONFIG_SOURCE}/stocktv.device.json" \
     "${CONFIG_SOURCE}/AppConfig.${MODE}.linux.json"
 do
     if [ ! -e "$required" ]; then
@@ -304,9 +305,56 @@ if install_config "${CONFIG_SOURCE}/AppConfig.${MODE}.linux.json" "$KIOSK_CONFIG
 
         step "Port ${PORT}, Fernsteuerung ${KIOSK_API_PORT}."
     fi
-elif [ "$GENERATED_KEY" = "true" ]; then
+fi
+
+# StockTV-Geraete-Datei: REST-Schnittstelle (Port 8098) mit demselben Schluessel wie der Kiosk.
+# Fehlt sie, teilt StockTV beim ersten Start die Betriebs-Konfiguration auf und legt sie mit LEEREM
+# Schluessel an - dann startet die REST-Schnittstelle nicht, und StockSuite findet die Anzeige nicht.
+# Eine vorhandene Datei behaelt ihren Schluessel, ausser er ist leer: dann wird er nachgetragen.
+STOCKTV_DEVICE="${STOCKTV_HOME}/_config/stocktv.device.json"
+STOCKTV_API_PORT="8098"
+STOCKTV_KEY_WRITTEN="false"
+KEY_SED="s|\"ApiKey\"[[:space:]]*:[[:space:]]*\"\"|\"ApiKey\": \"${API_KEY//\//\\/}\"|"
+
+if [ -e "$STOCKTV_DEVICE" ] && [ "$RESET_CONFIG" != "true" ]; then
+    if grep -Eq '"ApiKey"[[:space:]]*:[[:space:]]*""' "$STOCKTV_DEVICE"; then
+        if [ "$DRY_RUN" = "true" ]; then
+            step "wuerde den leeren API-Schluessel in ${STOCKTV_DEVICE} eintragen"
+        else
+            sed -i "$KEY_SED" "$STOCKTV_DEVICE"
+            STOCKTV_KEY_WRITTEN="true"
+            warn "StockTV hatte keinen API-Schluessel - die REST-Schnittstelle war aus. Schluessel nachgetragen; wirkt nach dem naechsten Start von StockTV."
+        fi
+    else
+        step "StockTV-Geraete-Datei bleibt unveraendert (schon vorhanden, mit Schluessel) - mit --reset-config ersetzen."
+    fi
+elif [ "$DRY_RUN" = "true" ]; then
+    step "wuerde StockTV-Geraete-Datei schreiben: ${STOCKTV_DEVICE}"
+else
+    mkdir -p "$(dirname "$STOCKTV_DEVICE")"
+    cp "${CONFIG_SOURCE}/stocktv.device.json" "$STOCKTV_DEVICE"
+    sed -i "$KEY_SED" "$STOCKTV_DEVICE"
+
+    # Eine alte Einzeldatei (vor der Aufteilung in drei Dateien) traegt Datei-Protokoll und Netzwerk selbst.
+    # Die neue Geraete-Datei verhindert, dass StockTV sie noch aufteilt - also hier uebernehmen.
+    if [ -e "$STOCKTV_CONFIG" ]; then
+        if grep -Eq '"FileLoggingEnabled"[[:space:]]*:[[:space:]]*false' "$STOCKTV_CONFIG"; then
+            sed -i 's/"FileLoggingEnabled"[[:space:]]*:[[:space:]]*true/"FileLoggingEnabled": false/' "$STOCKTV_DEVICE"
+        fi
+        if tr -d '\n\r' < "$STOCKTV_CONFIG" | grep -Eq '"Network"[[:space:]]*:[[:space:]]*\{[[:space:]]*"Enabled"[[:space:]]*:[[:space:]]*false'; then
+            sed -i '/"Network"/,/}/ s/"Enabled"[[:space:]]*:[[:space:]]*true/"Enabled": false/' "$STOCKTV_DEVICE"
+        fi
+    fi
+
+    STOCKTV_KEY_WRITTEN="true"
+    step "StockTV-Geraete-Datei geschrieben: ${STOCKTV_DEVICE} (REST-Schnittstelle auf Port ${STOCKTV_API_PORT})"
+fi
+
+if [ "$KIOSK_CONFIG_WRITTEN" != "true" ] && [ "$STOCKTV_KEY_WRITTEN" != "true" ] && [ "$GENERATED_KEY" = "true" ]; then
     API_KEY=""
-    warn "Die vorhandene Kiosk-Konfiguration behaelt ihren bisherigen API-Schluessel."
+    warn "Die vorhandenen Konfigurationen behalten ihren bisherigen API-Schluessel."
+elif [ "$KIOSK_CONFIG_WRITTEN" != "true" ] && [ "$STOCKTV_KEY_WRITTEN" = "true" ]; then
+    warn "Der Kiosk behaelt seinen bisherigen API-Schluessel; StockTV hat den unten angezeigten."
 fi
 
 # ---------------------------------------------------------------------------------------
@@ -363,8 +411,9 @@ elif ! ufw status 2>/dev/null | head -n1 | grep -q "active"; then
     step "ufw ist nicht aktiv - nichts freizugeben."
 else
     #  8080/tcp  Bedienoberflaeche   4747,4748/tcp  NetMQ zu den Anzeigen
+    #  8098/tcp  StockTV-REST (StockSuite)
     #  8099/tcp  Kiosk-Fernsteuerung 5353/udp       Geraetesuche (mDNS)
-    for spec in "${PORT}/tcp" "4747/tcp" "4748/tcp" "${KIOSK_API_PORT}/tcp" "5353/udp"; do
+    for spec in "${PORT}/tcp" "4747/tcp" "4748/tcp" "${STOCKTV_API_PORT}/tcp" "${KIOSK_API_PORT}/tcp" "5353/udp"; do
         if [ "$DRY_RUN" = "true" ]; then
             step "wuerde freigeben: ${spec}"
         elif run_root ufw allow "$spec" >/dev/null 2>&1; then
@@ -388,6 +437,7 @@ cat <<EOF
   Bedienfenster  http://localhost:${PORT}/
   Im Netz        http://$(hostname):${PORT}
   Fernsteuerung  http://$(hostname):${KIOSK_API_PORT}/swagger
+  StockTV-REST   http://$(hostname):${STOCKTV_API_PORT}  (fuer StockSuite, gleicher Schluessel)
 EOF
 
 if [ -n "$API_KEY" ]; then
