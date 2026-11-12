@@ -88,6 +88,13 @@ case "$MODE" in
     *) echo "Fehler: --mode muss service oder managed sein, nicht '$MODE'." >&2; exit 2 ;;
 esac
 
+# Die Vorlagen heissen wie unter Windows AppConfig.Service/Managed.linux.json. Linux unterscheidet
+# Gross- und Kleinschreibung - mit "service" eingesetzt fand das Skript die Datei nicht.
+case "$MODE" in
+    service) MODE_FILE="Service" ;;
+    managed) MODE_FILE="Managed" ;;
+esac
+
 STOCKTV_HOME="${INSTALL_DIR}/StockTV"
 KIOSK_HOME="${INSTALL_DIR}/StockTvKiosk"
 STOCKTV_SOURCE="${SCRIPT_DIR}/StockTvApps/StockTV"
@@ -138,7 +145,7 @@ for required in \
     "${KIOSK_SOURCE}/StockTvKiosk" \
     "${CONFIG_SOURCE}/stocktv.config.json" \
     "${CONFIG_SOURCE}/stocktv.device.json" \
-    "${CONFIG_SOURCE}/AppConfig.${MODE}.linux.json"
+    "${CONFIG_SOURCE}/AppConfig.${MODE_FILE}.linux.json"
 do
     if [ ! -e "$required" ]; then
         echo "Fehlt im Paket: $required" >&2
@@ -182,6 +189,8 @@ else
         step "wuerde nachinstallieren:${MISSING}"
     else
         step "Fehlt:${MISSING} - wird nachinstalliert."
+        # Ohne aktuelle Paketlisten (frisches Image, lange nicht aktualisiert) findet apt die Pakete nicht.
+        run_root apt-get update -qq || warn "apt-get update ist fehlgeschlagen - es wird mit den vorhandenen Paketlisten versucht."
         if run_root apt-get install -y ${MISSING}; then
             step "Nachinstalliert."
         else
@@ -219,21 +228,21 @@ copy_app() {
         return
     fi
 
-    maybe_sudo mkdir -p "$to"
+    maybe_sudo mkdir -p "$to" "${to}/_config" "${to}/_logs"
+
+    # Beide Anwendungen schreiben ihre Konfiguration selbst zurueck. Gehoerte das
+    # Verzeichnis root, koennten sie das nicht - und der Fehler faellt erst auf, wenn eine
+    # Einstellung nicht gespeichert wird. Nur noetig, wenn ueberhaupt erhoeht wurde.
+    # VOR dem Kopieren: kopiert wird als Benutzer, und in einen frisch per sudo angelegten
+    # Ordner duerfte er sonst nicht schreiben (Erstinstallation nach /opt).
+    if [ "$NEED_SUDO" = "true" ]; then
+        maybe_sudo chown -R "$(id -un):$(id -gn)" "$to"
+    fi
 
     # _config und _logs bleiben aussen vor: eine vorhandene Konfiguration gehoert dem Geraet
     # und darf ein Update nicht verlieren.
     ( cd "$from" && find . -maxdepth 1 -mindepth 1 \
         ! -name '_config' ! -name '_logs' -exec cp -r {} "$to/" \; )
-
-    maybe_sudo mkdir -p "${to}/_config" "${to}/_logs"
-
-    # Beide Anwendungen schreiben ihre Konfiguration selbst zurueck. Gehoerte das
-    # Verzeichnis root, koennten sie das nicht - und der Fehler faellt erst auf, wenn eine
-    # Einstellung nicht gespeichert wird. Nur noetig, wenn ueberhaupt erhoeht wurde.
-    if [ "$NEED_SUDO" = "true" ]; then
-        maybe_sudo chown -R "$(id -un):$(id -gn)" "$to"
-    fi
 
     step "${label} nach ${to} ($(find "$from" -type f | wc -l) Dateien)."
 }
@@ -286,7 +295,7 @@ if install_config "${CONFIG_SOURCE}/stocktv.config.json" "$STOCKTV_CONFIG" "Stoc
 fi
 
 KIOSK_CONFIG_WRITTEN="false"
-if install_config "${CONFIG_SOURCE}/AppConfig.${MODE}.linux.json" "$KIOSK_CONFIG" "Kiosk-Konfiguration (${MODE})"; then
+if install_config "${CONFIG_SOURCE}/AppConfig.${MODE_FILE}.linux.json" "$KIOSK_CONFIG" "Kiosk-Konfiguration (${MODE})"; then
     KIOSK_CONFIG_WRITTEN="true"
 
     if [ "$DRY_RUN" != "true" ]; then
