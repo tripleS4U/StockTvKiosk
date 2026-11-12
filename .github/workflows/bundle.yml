@@ -325,7 +325,7 @@ jobs:
             gh release create "$TAG" dist/* \
               --target "$GITHUB_SHA" \
               --prerelease \
-              --title "Preview ($VERSION)" \
+              --title "StockTV-Kiosk Preview ($VERSION, StockTV $STOCKTV_REF @ ${STOCKTV_SHA:0:7})" \
               --notes-file notes.md
           }
 
@@ -345,9 +345,11 @@ jobs:
               echo "Release $VERSION existiert bereits - Dateien werden ersetzt."
               gh release upload "$VERSION" dist/* --clobber
             else
+              # Titel nennt beide Staende: "StockTV $VERSION" liess sich mit einer StockTV-Version
+              # verwechseln (Kiosk v1.0.0 enthaelt z. B. StockTV v1.10.0).
               gh release create "$VERSION" dist/* \
                 --verify-tag \
-                --title "StockTV $VERSION" \
+                --title "StockTV-Kiosk $VERSION (StockTV $STOCKTV_REF @ ${STOCKTV_SHA:0:7})" \
                 --notes-file notes.md
             fi
           }
